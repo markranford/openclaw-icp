@@ -71,11 +71,13 @@ const OpenClawError = IDL.Variant({
   NotAuthenticated: IDL.Null,
   ConversationNotFound: IDL.Null,
   AlreadyProcessing: IDL.Null,
+  InsufficientBalance: IDL.Null,
   CycleBudgetExceeded: IDL.Null,
   ResponseTooLarge: IDL.Null,
   Timeout: IDL.Null,
   InvalidInput: IDL.Text,
   ApiKeyNotFound: IDL.Text,
+  WalletError: IDL.Text,
   ProviderError: IDL.Text,
 });
 

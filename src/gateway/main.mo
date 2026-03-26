@@ -37,6 +37,11 @@ persistent actor class Gateway(deployer : Principal) {
   var userConversations : Map.Map<Principal, Map.Map<Text, Conversation>> = principalOps.empty();
   var nonceCounter : Nat = 0;
   var keyVaultPrincipal : ?Principal = null;
+  var walletPrincipal : ?Principal = null;
+  var identityPrincipal : ?Principal = null;
+
+  // Pay-per-request fee for external LLM calls (in e8s for ICP)
+  var externalRequestFee : Nat = 10_000; // 0.0001 ICP default
 
   // Admin is the deployer — immutable after construction
   let admin : Principal = deployer;
@@ -93,6 +98,36 @@ persistent actor class Gateway(deployer : Principal) {
       case (#ok(())) {};
     };
     keyVaultPrincipal := ?kvPrincipal;
+    #ok(());
+  };
+
+  /// Set the Wallet canister principal (admin only)
+  public shared (msg) func setWallet(wp : Principal) : async Result.Result<(), OpenClawError> {
+    switch (requireAdmin(msg.caller)) {
+      case (#err(e)) { return #err(e) };
+      case (#ok(())) {};
+    };
+    walletPrincipal := ?wp;
+    #ok(());
+  };
+
+  /// Set the Identity canister principal (admin only)
+  public shared (msg) func setIdentity(ip : Principal) : async Result.Result<(), OpenClawError> {
+    switch (requireAdmin(msg.caller)) {
+      case (#err(e)) { return #err(e) };
+      case (#ok(())) {};
+    };
+    identityPrincipal := ?ip;
+    #ok(());
+  };
+
+  /// Set the fee for external LLM requests (admin only, in e8s)
+  public shared (msg) func setRequestFee(fee : Nat) : async Result.Result<(), OpenClawError> {
+    switch (requireAdmin(msg.caller)) {
+      case (#err(e)) { return #err(e) };
+      case (#ok(())) {};
+    };
+    externalRequestFee := fee;
     #ok(());
   };
 
@@ -189,35 +224,68 @@ persistent actor class Gateway(deployer : Principal) {
 
       messagesBuf.add({ role = #user; content = req.message });
 
-      // 5. Route to LLM
+      // 5. Capture caller before any await (S7)
+      let caller = msg.caller;
       let allMessages = Buffer.toArray(messagesBuf);
       let idempotencyKey = generateIdempotencyKey();
 
+      // Determine if this is an external model (requires payment)
+      let isExternal = switch (req.model) { case (#External(_)) true; case _ false };
+
+      // 5a. For external models: resolve API key FIRST (before deducting payment)
+      var resolvedApiKey : ?Text = null;
+      switch (req.model) {
+        case (#External(externalModel)) {
+          let apiKey = switch (req.apiKey) {
+            case (?key) { key };
+            case null {
+              let keyId = LlmRouter.providerKeyId(externalModel);
+              let apiKeyResult = await getApiKey(caller, keyId);
+              switch (apiKeyResult) {
+                case (#err(e)) { return #err(e) }; // fail BEFORE payment
+                case (#ok(k)) { k };
+              };
+            };
+          };
+          resolvedApiKey := ?apiKey;
+        };
+        case _ {};
+      };
+
+      // 5b. Deduct payment for external models (after API key confirmed)
+      var paymentDeducted = false;
+      if (isExternal and externalRequestFee > 0) {
+        switch (walletPrincipal) {
+          case null {}; // wallet not configured — skip payment (local dev)
+          case (?wp) {
+            let walletActor : actor {
+              deductForRequest : (Principal, Types.TokenType, Nat) -> async Result.Result<(), Text>;
+            } = actor (Principal.toText(wp));
+            let deductResult = await walletActor.deductForRequest(caller, #ICP, externalRequestFee);
+            switch (deductResult) {
+              case (#err(_)) { return #err(#InsufficientBalance) };
+              case (#ok(())) { paymentDeducted := true };
+            };
+          };
+        };
+      };
+
+      // 6. Route to LLM
       let routeResult = switch (req.model) {
         case (#OnChain(onChainModel)) {
           await LlmRouter.routeOnChain(onChainModel, allMessages);
         };
         case (#External(externalModel)) {
-          // Use request-provided API key (vetKD-decrypted on frontend)
-          // or fall back to KeyVault lookup (plaintext, for local dev)
-          let apiKey = switch (req.apiKey) {
-            case (?key) { key };
-            case null {
-              let keyId = LlmRouter.providerKeyId(externalModel);
-              let apiKeyResult = await getApiKey(msg.caller, keyId);
-              switch (apiKeyResult) {
-                case (#err(e)) { return #err(e) };
-                case (#ok(k)) { k };
-              };
-            };
+          let apiKey = switch (resolvedApiKey) {
+            case (?k) { k };
+            case null { return #err(#ApiKeyNotFound("No API key resolved")) };
           };
-
           await LlmRouter.routeExternal(
             externalModel,
             allMessages,
             apiKey,
             idempotencyKey,
-            Principal.toText(msg.caller),
+            Principal.toText(caller),
             transform,
           );
         };
@@ -225,13 +293,39 @@ persistent actor class Gateway(deployer : Principal) {
 
       let reply = switch (routeResult) {
         case (#ok(text)) { text };
-        case (#err(e)) { return #err(e) };
+        case (#err(e)) {
+          // REFUND on LLM failure if we already deducted
+          if (paymentDeducted) {
+            switch (walletPrincipal) {
+              case (?wp) {
+                let walletActor : actor {
+                  refundForRequest : (Principal, Types.TokenType, Nat) -> async Result.Result<(), Text>;
+                } = actor (Principal.toText(wp));
+                try { ignore await walletActor.refundForRequest(caller, #ICP, externalRequestFee) }
+                catch (_) {}; // best-effort refund
+              };
+              case null {};
+            };
+          };
+          return #err(e);
+        };
       };
 
-      // 6. Add assistant response
+      // 7. Add assistant response
       messagesBuf.add({ role = #assistant; content = reply });
 
-      // 7. Save conversation
+      // 8. Increment prompt count on Identity (best-effort, fire-and-forget)
+      switch (identityPrincipal) {
+        case null {};
+        case (?ip) {
+          let identityActor : actor {
+            incrementPromptCount : (Principal) -> async ();
+          } = actor (Principal.toText(ip));
+          try { await identityActor.incrementPromptCount(caller) } catch (_) {};
+        };
+      };
+
+      // 9. Save conversation
       let updatedConv : Conversation = {
         id = convId;
         owner = msg.caller;

@@ -85,6 +85,8 @@ module {
     #ConversationNotFound;
     #ProviderError : Text;
     #ApiKeyNotFound : Text;
+    #InsufficientBalance;
+    #WalletError : Text;
     #CycleBudgetExceeded;
     #ResponseTooLarge;
     #Timeout;
@@ -116,6 +118,24 @@ module {
     updatedAt : Int;
   };
 
+  // ── ICRC-1 Types ───────────────────────────────────────────────
+
+  public type Account = {
+    owner : Principal;
+    subaccount : ?Blob;
+  };
+
+  public type ICRC1TransferError = {
+    #BadFee : { expected_fee : Nat };
+    #BadBurn : { min_burn_amount : Nat };
+    #InsufficientFunds : { balance : Nat };
+    #TooOld;
+    #CreatedInFuture : { ledger_time : Nat64 };
+    #Duplicate : { duplicate_of : Nat };
+    #TemporarilyUnavailable;
+    #GenericError : { error_code : Nat; message : Text };
+  };
+
   // ── Wallet Types ────────────────────────────────────────────────
 
   public type TokenType = {
@@ -124,11 +144,18 @@ module {
     #ckBTC;
   };
 
+  public type TransactionType = {
+    #Deposit;
+    #Withdrawal;
+    #LlmFee;
+    #Refund;
+  };
+
   public type TransactionRecord = {
     id : Nat;
     tokenType : TokenType;
     amount : Nat;
-    direction : { #Incoming; #Outgoing };
+    txType : TransactionType;
     counterparty : ?Principal;
     memo : ?Text;
     timestamp : Int;
