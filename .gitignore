@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.dfx/
+.icp/
+.mops/
+target/
+.env
+.env.local
+*.wasm
+*.wasm.gz
+.DS_Store
+ii_dev.wasm.gz
+deps/

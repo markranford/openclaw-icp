@@ -1,0 +1,53 @@
+canisters:
+  - name: gateway
+    recipe:
+      type: "@dfinity/motoko"
+    configuration:
+      main: src/gateway/main.mo
+
+  - name: keyvault
+    recipe:
+      type: "@dfinity/motoko"
+    configuration:
+      main: src/keyvault/main.mo
+
+  - name: wallet
+    recipe:
+      type: "@dfinity/motoko"
+    configuration:
+      main: src/wallet/main.mo
+
+  - name: identity
+    recipe:
+      type: "@dfinity/motoko"
+    configuration:
+      main: src/identity/main.mo
+
+  - name: frontend
+    recipe:
+      type: "@dfinity/asset-canister"
+    configuration:
+      dir: src/frontend/dist
+      build:
+        - npm --prefix src/frontend install
+        - npm --prefix src/frontend run build
+
+environments:
+  local:
+    network: local
+    ii: true
+    canisters:
+      - gateway
+      - keyvault
+      - wallet
+      - identity
+      - frontend
+
+  ic:
+    network: ic
+    canisters:
+      - gateway
+      - keyvault
+      - wallet
+      - identity
+      - frontend

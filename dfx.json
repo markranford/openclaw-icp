@@ -1,0 +1,49 @@
+{
+  "canisters": {
+    "internet_identity": {
+      "type": "custom",
+      "candid": "https://github.com/dfinity/internet-identity/releases/latest/download/internet_identity.did",
+      "wasm": "https://github.com/dfinity/internet-identity/releases/latest/download/internet_identity_dev.wasm.gz",
+      "specified_id": "rdmx6-jaaaa-aaaaa-aaadq-cai",
+      "init_arg": "(null)",
+      "remote": {
+        "id": {
+          "ic": "rdmx6-jaaaa-aaaaa-aaadq-cai"
+        }
+      }
+    },
+    "gateway": {
+      "type": "motoko",
+      "main": "src/gateway/main.mo",
+      "init_arg_file": "init_args/gateway.txt"
+    },
+    "keyvault": {
+      "type": "motoko",
+      "main": "src/keyvault/main.mo",
+      "init_arg_file": "init_args/keyvault.txt"
+    },
+    "wallet": {
+      "type": "motoko",
+      "main": "src/wallet/main.mo",
+      "init_arg_file": "init_args/wallet.txt"
+    },
+    "identity": {
+      "type": "motoko",
+      "main": "src/identity/main.mo",
+      "init_arg_file": "init_args/identity.txt"
+    },
+    "frontend": {
+      "type": "assets",
+      "source": ["src/frontend/dist"],
+      "dependencies": ["gateway", "keyvault", "wallet", "identity"],
+      "build": []
+    }
+  },
+  "defaults": {
+    "build": {
+      "packtool": "mops sources"
+    }
+  },
+  "output_env_file": ".env",
+  "version": 1
+}

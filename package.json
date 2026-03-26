@@ -1,0 +1,14 @@
+{
+  "name": "openclaw-icp",
+  "version": "0.1.0",
+  "description": "ICP-native AI agent platform",
+  "private": true,
+  "workspaces": [
+    "src/frontend"
+  ],
+  "scripts": {
+    "build": "npm --prefix src/frontend run build",
+    "dev": "npm --prefix src/frontend run dev",
+    "test": "npm --prefix src/frontend run test"
+  }
+}

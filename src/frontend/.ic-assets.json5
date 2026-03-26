@@ -1,0 +1,15 @@
+[
+  {
+    "match": "**/*",
+    "security_policy": "standard",
+    "headers": {
+      "Cache-Control": "public, max-age=0, must-revalidate"
+    },
+    "allow_raw_access": false
+  },
+  {
+    // SPA fallback: serve index.html for all routes
+    "match": "**/*",
+    "enable_aliasing": true
+  }
+]
