@@ -460,6 +460,41 @@ const MemoryResult = IDL.Variant({
   NotConfigured: IDL.Text,
 });
 
+// ── Marketplace IDL Types ────────────────────────────────────────────
+
+const PaymentType = IDL.Variant({ PerMessage: IDL.Null, Daily: IDL.Null });
+const MarketplaceCategory = IDL.Variant({
+  All: IDL.Null, Code: IDL.Null, Research: IDL.Null,
+  Creative: IDL.Null, Business: IDL.Null, Coaching: IDL.Null,
+  Custom: IDL.Text,
+});
+
+const PublishedPersona = IDL.Record({
+  owner: IDL.Principal, personaId: IDL.Text, personaName: IDL.Text,
+  personaDescription: IDL.Text, pricePerMessage: IDL.Nat, pricePerDay: IDL.Nat,
+  totalEarnings: IDL.Nat, hireCount: IDL.Nat, ratingSum: IDL.Nat,
+  ratingCount: IDL.Nat, corpusIds: IDL.Vec(IDL.Text),
+  category: MarketplaceCategory, isActive: IDL.Bool, publishedAt: IDL.Int,
+});
+
+const PersonaHire = IDL.Record({
+  hirer: IDL.Principal, personaId: IDL.Text, owner: IDL.Principal,
+  paymentType: PaymentType, expiresAt: IDL.Int, messagesUsed: IDL.Nat,
+  totalPaid: IDL.Nat, startedAt: IDL.Int,
+});
+
+const PersonaNftMetadata = IDL.Record({
+  personaId: IDL.Text, owner: IDL.Principal,
+  traitSnapshot: IDL.Vec(PersonaTrait), corpusRefs: IDL.Vec(IDL.Text),
+  mintedAt: IDL.Int, tokenId: IDL.Nat,
+});
+
+const MarketplaceListing = IDL.Record({
+  published: PublishedPersona, traitCount: IDL.Nat, averageRating: IDL.Nat,
+});
+
+const MarketplaceOpResult = IDL.Variant({ Ok: IDL.Text, Err: IDL.Text });
+
 // ── IDL factory ─────────────────────────────────────────────────────
 
 /**
@@ -528,6 +563,18 @@ export const idlFactory: IDL.InterfaceFactory = ({ IDL: _IDL }) => {
     'mmAddParticipant': IDL.Func([IDL.Text, IDL.Text, IDL.Text], [MemoryResult], []),
     'mmCreatePersonaFromBlueprint': IDL.Func([IDL.Text, IDL.Text, IDL.Text], [MemoryResult], []),
     'mmInvalidateCache': IDL.Func([], [MemoryResult], []),
+    // Marketplace
+    publishPersona: IDL.Func([IDL.Text, IDL.Nat, IDL.Nat, IDL.Vec(IDL.Text), MarketplaceCategory], [MarketplaceOpResult], []),
+    unpublishPersona: IDL.Func([IDL.Text], [MarketplaceOpResult], []),
+    browseMarketplace: IDL.Func([IDL.Text, IDL.Text, IDL.Nat, IDL.Nat], [IDL.Vec(MarketplaceListing)], []),
+    hirePersona: IDL.Func([IDL.Text, PaymentType], [MarketplaceOpResult], []),
+    endHire: IDL.Func([IDL.Text], [MarketplaceOpResult], []),
+    listMyHires: IDL.Func([], [IDL.Vec(PersonaHire)], []),
+    ratePersona: IDL.Func([IDL.Text, IDL.Nat], [MarketplaceOpResult], []),
+    getPersonaEarnings: IDL.Func([IDL.Text], [MarketplaceOpResult], []),
+    withdrawPersonaEarnings: IDL.Func([IDL.Text, IDL.Nat], [MarketplaceOpResult], []),
+    mintPersonaNft: IDL.Func([IDL.Text], [MarketplaceOpResult], []),
+    getPersonaNft: IDL.Func([IDL.Text], [IDL.Opt(PersonaNftMetadata)], []),
     health: IDL.Func([], [IDL.Text], ["query"]),
   });
 };
@@ -682,6 +729,55 @@ export type CandidCommResult =
 
 /** TypeScript mirror of the Candid `MemoryResult` variant. */
 export type CandidMemoryResult = { Success: string } | { Failed: string } | { NotConfigured: string };
+
+// ── Marketplace TypeScript Types ──────────────────────────────────
+
+export type CandidPaymentType = { PerMessage: null } | { Daily: null };
+export type CandidMarketplaceCategory = { All: null } | { Code: null } | { Research: null } | { Creative: null } | { Business: null } | { Coaching: null } | { Custom: string };
+export type CandidMarketplaceOpResult = { Ok: string } | { Err: string };
+
+export interface CandidPublishedPersona {
+  owner: Principal;
+  personaId: string;
+  personaName: string;
+  personaDescription: string;
+  pricePerMessage: bigint;
+  pricePerDay: bigint;
+  totalEarnings: bigint;
+  hireCount: bigint;
+  ratingSum: bigint;
+  ratingCount: bigint;
+  corpusIds: string[];
+  category: CandidMarketplaceCategory;
+  isActive: boolean;
+  publishedAt: bigint;
+}
+
+export interface CandidPersonaHire {
+  hirer: Principal;
+  personaId: string;
+  owner: Principal;
+  paymentType: CandidPaymentType;
+  expiresAt: bigint;
+  messagesUsed: bigint;
+  totalPaid: bigint;
+  startedAt: bigint;
+}
+
+export interface CandidPersonaNftMetadata {
+  personaId: string;
+  owner: Principal;
+  traitSnapshot: CandidPersonaTrait[];
+  corpusRefs: string[];
+  mintedAt: bigint;
+  tokenId: bigint;
+}
+
+export interface CandidMarketplaceListing {
+  published: CandidPublishedPersona;
+  traitCount: bigint;
+  averageRating: bigint;
+}
 
 // ── Trait types ──────────────────────────────────────────────────────
 
@@ -938,6 +1034,18 @@ export interface GatewayService {
   mmCreatePersonaFromBlueprint: (blueprintId: string, name: string, description: string) => Promise<CandidMemoryResult>;
   /** Invalidate the MagickMind runtime cache. */
   mmInvalidateCache: () => Promise<CandidMemoryResult>;
+  // Marketplace
+  publishPersona: (personaId: string, pricePerMessage: bigint, pricePerDay: bigint, corpusIds: string[], category: CandidMarketplaceCategory) => Promise<CandidMarketplaceOpResult>;
+  unpublishPersona: (personaId: string) => Promise<CandidMarketplaceOpResult>;
+  browseMarketplace: (category: string, sortBy: string, offset: bigint, limit: bigint) => Promise<CandidMarketplaceListing[]>;
+  hirePersona: (personaId: string, paymentType: CandidPaymentType) => Promise<CandidMarketplaceOpResult>;
+  endHire: (personaId: string) => Promise<CandidMarketplaceOpResult>;
+  listMyHires: () => Promise<CandidPersonaHire[]>;
+  ratePersona: (personaId: string, rating: bigint) => Promise<CandidMarketplaceOpResult>;
+  getPersonaEarnings: (personaId: string) => Promise<CandidMarketplaceOpResult>;
+  withdrawPersonaEarnings: (personaId: string, amount: bigint) => Promise<CandidMarketplaceOpResult>;
+  mintPersonaNft: (personaId: string) => Promise<CandidMarketplaceOpResult>;
+  getPersonaNft: (personaId: string) => Promise<[] | [CandidPersonaNftMetadata]>;
   /** Canister health check. Returns a status string. */
   health: () => Promise<string>;
 }

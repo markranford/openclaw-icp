@@ -633,4 +633,65 @@ module {
     #Failed : Text;      // Error message
     #NotConfigured : Text;
   };
+
+  // ── Persona Marketplace Types ─────────────────────────────────
+
+  /// Payment model for hired personas.
+  public type PaymentType = { #PerMessage; #Daily };
+
+  /// Category for marketplace filtering.
+  public type MarketplaceCategory = { #All; #Code; #Research; #Creative; #Business; #Coaching; #Custom : Text };
+
+  /// A persona listed on the marketplace.
+  public type PublishedPersona = {
+    owner : Principal;
+    personaId : Text;
+    personaName : Text;
+    personaDescription : Text;
+    pricePerMessage : Nat;   // in e8s (1 ICP = 100_000_000 e8s)
+    pricePerDay : Nat;       // in e8s (0 = daily hire not available)
+    totalEarnings : Nat;
+    hireCount : Nat;
+    ratingSum : Nat;
+    ratingCount : Nat;
+    corpusIds : [Text];      // knowledge bases accessible when hired
+    category : MarketplaceCategory;
+    isActive : Bool;
+    publishedAt : Int;
+  };
+
+  /// An active hire of a marketplace persona.
+  public type PersonaHire = {
+    hirer : Principal;
+    personaId : Text;
+    owner : Principal;
+    paymentType : PaymentType;
+    expiresAt : Int;    // 0 for per-message, nanosecond timestamp for daily
+    messagesUsed : Nat;
+    totalPaid : Nat;
+    startedAt : Int;
+  };
+
+  /// NFT metadata for a minted persona.
+  public type PersonaNftMetadata = {
+    personaId : Text;
+    owner : Principal;
+    traitSnapshot : [PersonaTrait];
+    corpusRefs : [Text];
+    mintedAt : Int;
+    tokenId : Nat;
+  };
+
+  /// Marketplace listing (published persona + computed display info).
+  public type MarketplaceListing = {
+    published : PublishedPersona;
+    traitCount : Nat;
+    averageRating : Nat;  // rating * 100 (e.g. 450 = 4.5 stars)
+  };
+
+  /// Marketplace operation result.
+  public type MarketplaceOpResult = {
+    #Ok : Text;
+    #Err : Text;
+  };
 }

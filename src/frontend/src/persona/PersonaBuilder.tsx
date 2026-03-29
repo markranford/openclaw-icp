@@ -654,6 +654,56 @@ export default function PersonaBuilder() {
                   Preview Prompt
                 </button>
               )}
+
+              {/* Marketplace actions */}
+              {form.id && !form.isBuiltIn && !isCreating && (
+                <>
+                  <button
+                    onClick={async (e) => {
+                      e.preventDefault();
+                      try {
+                        const agent = await createAgent(authClient ?? undefined);
+                        const gw = createGatewayActor(agent);
+                        const res = await gw.publishPersona(form.id, BigInt(10000), BigInt(100000), [], { All: null });
+                        alert("Ok" in res ? "Published to marketplace!" : "Error: " + res.Err);
+                      } catch (err: any) { alert("Error: " + err.message); }
+                    }}
+                    style={{
+                      backgroundColor: "transparent",
+                      color: "#22c55e",
+                      border: "1px solid #22c55e",
+                      borderRadius: "8px",
+                      padding: "0.6rem 1.25rem",
+                      fontSize: "0.85rem",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Publish to Marketplace
+                  </button>
+                  <button
+                    onClick={async (e) => {
+                      e.preventDefault();
+                      try {
+                        const agent = await createAgent(authClient ?? undefined);
+                        const gw = createGatewayActor(agent);
+                        const res = await gw.mintPersonaNft(form.id);
+                        alert("Ok" in res ? res.Ok : "Error: " + res.Err);
+                      } catch (err: any) { alert("Error: " + err.message); }
+                    }}
+                    style={{
+                      backgroundColor: "transparent",
+                      color: "#c084fc",
+                      border: "1px solid #c084fc",
+                      borderRadius: "8px",
+                      padding: "0.6rem 1.25rem",
+                      fontSize: "0.85rem",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Mint as NFT
+                  </button>
+                </>
+              )}
             </div>
 
             {/* Preview panel */}

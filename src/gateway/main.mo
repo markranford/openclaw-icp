@@ -133,6 +133,19 @@ persistent actor class Gateway(deployer : Principal) {
   let MAX_GROUP_CHATS_PER_USER : Nat = 20;
   let MAX_PERSONAS_PER_GROUP : Nat = 5;
 
+  // ── Persona Marketplace State ───────────────────────────────────
+  // Global marketplace index: personaId -> PublishedPersona
+  var marketplace : Map.Map<Text, Types.PublishedPersona> = textOps.empty();
+  // Active hires: "hirerPrincipal:personaId" -> PersonaHire
+  var activeHires : Map.Map<Text, Types.PersonaHire> = textOps.empty();
+  // Persona earnings: personaId -> accumulated e8s
+  var personaEarnings : Map.Map<Text, Nat> = textOps.empty();
+  // NFT metadata: personaId -> PersonaNftMetadata
+  var personaNfts : Map.Map<Text, Types.PersonaNftMetadata> = textOps.empty();
+  var nftTokenCounter : Nat = 0;
+  // Rating dedup tracker: "hirerPrincipal:personaId" -> has rated
+  var ratingTracker : Map.Map<Text, Bool> = textOps.empty();
+
   // Built-in system prompt templates returned alongside user templates.
   let BUILT_IN_TEMPLATES : [SystemPromptTemplate] = [
     { id = "builtin_code"; name = "Code Assistant"; content = "You are an expert software engineer. Write clean, efficient, well-documented code. Explain your reasoning. When asked to debug, identify the root cause before suggesting fixes."; isBuiltIn = true; createdAt = 0 },
@@ -2190,12 +2203,31 @@ persistent actor class Gateway(deployer : Principal) {
         case null { return #err(#InvalidInput("Group chat not found")) };
       };
 
-      // Step 4: Resolve all personas in the group
+      // Step 4: Resolve all personas in the group (own + hired)
       let personaBuf = Buffer.Buffer<Persona>(group.personaIds.size());
+      let hiredIds = Buffer.Buffer<Text>(0); // track which are hired (for per-msg payment)
       for (pid in group.personaIds.vals()) {
+        // Try caller's own personas first
         switch (findPersona(msg.caller, pid)) {
           case (?p) { personaBuf.add(p) };
-          case null { return #err(#InvalidInput("Persona no longer exists: " # pid)) };
+          case null {
+            // Check if it's a hired persona from the marketplace
+            let key = hireKey(msg.caller, pid);
+            switch (textOps.get(activeHires, key)) {
+              case null { return #err(#InvalidInput("Persona not found or hire expired: " # pid)) };
+              case (?hire) {
+                let isActive = switch (hire.paymentType) {
+                  case (#Daily) { Time.now() < hire.expiresAt };
+                  case (#PerMessage) { true };
+                };
+                if (not isActive) { return #err(#InvalidInput("Hire expired for persona: " # pid)) };
+                switch (findPersonaByOwner(hire.owner, pid)) {
+                  case (?p) { personaBuf.add(p); hiredIds.add(pid) };
+                  case null { return #err(#InvalidInput("Hired persona no longer exists: " # pid)) };
+                };
+              };
+            };
+          };
         };
       };
       let personas = Buffer.toArray(personaBuf);
@@ -2333,14 +2365,72 @@ persistent actor class Gateway(deployer : Principal) {
       let currentHistory = Buffer.toArray(messagesBuf);
 
       for (persona in orderedPersonas.vals()) {
+        // Per-message payment for hired personas
+        let isHired = Array.find<Text>(Buffer.toArray(hiredIds), func(id) { id == persona.id });
+        var skipPersona = false;
+        switch (isHired) {
+          case (?hid) {
+            switch (textOps.get(marketplace, hid)) {
+              case (?pub) {
+                if (pub.pricePerMessage > 0) {
+                  switch (walletPrincipal) {
+                    case null {}; // dev mode
+                    case (?wp) {
+                      let walletActor : actor {
+                        deductForRequest : (Principal, Types.TokenType, Nat) -> async Result.Result<(), Text>;
+                      } = actor (Principal.toText(wp));
+                      switch (await walletActor.deductForRequest(caller, #ICP, pub.pricePerMessage)) {
+                        case (#err(_)) {
+                          responseBuf.add({ role = #assistant; content = "[Payment failed — insufficient balance for " # persona.name # "]"; personaId = ?persona.id; personaName = ?persona.name; personaAvatar = ?persona.avatar; targetPersonaId = null; senderPrincipal = null });
+                          skipPersona := true;
+                        };
+                        case (#ok(())) {
+                          let prev = switch (textOps.get(personaEarnings, hid)) { case null { 0 }; case (?v) { v } };
+                          personaEarnings := textOps.put(personaEarnings, hid, prev + pub.pricePerMessage);
+                          let hKey = hireKey(caller, hid);
+                          switch (textOps.get(activeHires, hKey)) {
+                            case (?hire) {
+                              activeHires := textOps.put(activeHires, hKey, {
+                                hirer = hire.hirer; personaId = hire.personaId; owner = hire.owner;
+                                paymentType = hire.paymentType; expiresAt = hire.expiresAt;
+                                messagesUsed = hire.messagesUsed + 1;
+                                totalPaid = hire.totalPaid + pub.pricePerMessage;
+                                startedAt = hire.startedAt;
+                              });
+                            };
+                            case null {};
+                          };
+                        };
+                      };
+                    };
+                  };
+                };
+              };
+              case null {};
+            };
+          };
+          case null {};
+        };
+
+        if (not skipPersona) {
         // Get other persona names (exclude current)
         let otherBuf = Buffer.Buffer<Text>(0);
         for (n in allNames.vals()) {
           if (n != persona.name) { otherBuf.add(n) };
         };
 
-        // Look up persona traits
-        let pTraits : ?PersonaTraits = switch (principalOps.get(personaTraits, caller)) {
+        // Look up persona traits (check owner's traits for hired personas)
+        let traitOwner = switch (isHired) {
+          case (?_) {
+            let hKey2 = hireKey(caller, persona.id);
+            switch (textOps.get(activeHires, hKey2)) {
+              case (?hire) { hire.owner };
+              case null { caller };
+            };
+          };
+          case null { caller };
+        };
+        let pTraits : ?PersonaTraits = switch (principalOps.get(personaTraits, traitOwner)) {
           case (?traitsMap) { textOps.get(traitsMap, persona.id) };
           case null { null };
         };
@@ -2390,6 +2480,7 @@ persistent actor class Gateway(deployer : Principal) {
             return #err(e);
           };
         };
+        }; // end if (not skipPersona)
       };
 
       // Step 12: Persist conversation
@@ -3154,6 +3245,325 @@ persistent actor class Gateway(deployer : Principal) {
     switch (await HttpOutcalls.invalidateRuntimeCache(apiKey, transform)) {
       case (#ok(text)) { #Success(text) }; case (#err(#ProviderError(e))) { #Failed(e) }; case (#err(_)) { #Failed("Unexpected error") };
     };
+  };
+
+  // ── Persona Marketplace ──────────────────────────────────────────
+
+  // Find a persona owned by any specific principal (cross-user lookup).
+  func findPersonaByOwner(owner : Principal, personaId : Text) : ?Persona {
+    // Check built-in first
+    switch (Array.find<Persona>(BUILT_IN_PERSONAS, func(p) { p.id == personaId })) {
+      case (?p) { return ?p };
+      case null {};
+    };
+    switch (principalOps.get(userPersonas, owner)) {
+      case (?userMap) { textOps.get(userMap, personaId) };
+      case null { null };
+    };
+  };
+
+  func hireKey(hirer : Principal, personaId : Text) : Text {
+    Principal.toText(hirer) # ":" # personaId;
+  };
+
+  func computePowerForPrice(pricePerMessage : Nat) : Nat {
+    if (pricePerMessage == 0) { 30 }
+    else if (pricePerMessage < 50_000) { 50 }
+    else if (pricePerMessage < 200_000) { 75 }
+    else { 100 };
+  };
+
+  /// Publish a persona to the marketplace for hire.
+  public shared (msg) func publishPersona(
+    personaId : Text,
+    pricePerMessage : Nat,
+    pricePerDay : Nat,
+    corpusIds : [Text],
+    category : Types.MarketplaceCategory,
+  ) : async Types.MarketplaceOpResult {
+    switch (Auth.requireAuth(msg.caller)) { case (#err(_)) { return #Err("Not authenticated") }; case (#ok(())) {} };
+    switch (findPersonaByOwner(msg.caller, personaId)) {
+      case null { return #Err("You don't own this persona") };
+      case (?persona) {
+        switch (textOps.get(marketplace, personaId)) {
+          case (?_) { return #Err("Persona already published") };
+          case null {
+            let published : Types.PublishedPersona = {
+              owner = msg.caller;
+              personaId = personaId;
+              personaName = persona.name;
+              personaDescription = persona.description;
+              pricePerMessage = pricePerMessage;
+              pricePerDay = pricePerDay;
+              totalEarnings = 0;
+              hireCount = 0;
+              ratingSum = 0;
+              ratingCount = 0;
+              corpusIds = corpusIds;
+              category = category;
+              isActive = true;
+              publishedAt = Time.now();
+            };
+            marketplace := textOps.put(marketplace, personaId, published);
+            #Ok("Published successfully");
+          };
+        };
+      };
+    };
+  };
+
+  /// Remove a persona from the marketplace.
+  public shared (msg) func unpublishPersona(personaId : Text) : async Types.MarketplaceOpResult {
+    switch (Auth.requireAuth(msg.caller)) { case (#err(_)) { return #Err("Not authenticated") }; case (#ok(())) {} };
+    switch (textOps.get(marketplace, personaId)) {
+      case null { return #Err("Persona not published") };
+      case (?pub) {
+        if (pub.owner != msg.caller) { return #Err("Not the owner") };
+        marketplace := textOps.delete(marketplace, personaId);
+        #Ok("Unpublished successfully");
+      };
+    };
+  };
+
+  /// Browse the marketplace for published personas.
+  public shared (msg) func browseMarketplace(category : Text, sortBy : Text, offset : Nat, limit : Nat) : async [Types.MarketplaceListing] {
+    let buf = Buffer.Buffer<Types.MarketplaceListing>(16);
+    for ((_, pub) in textOps.entries(marketplace)) {
+      if (pub.isActive) {
+        let matchesCategory = category == "All" or (
+          switch (pub.category) {
+            case (#All) { true };
+            case (#Code) { category == "Code" };
+            case (#Research) { category == "Research" };
+            case (#Creative) { category == "Creative" };
+            case (#Business) { category == "Business" };
+            case (#Coaching) { category == "Coaching" };
+            case (#Custom(_)) { category == "Custom" };
+          }
+        );
+        if (matchesCategory) {
+          let avgRating = if (pub.ratingCount > 0) { (pub.ratingSum * 100) / pub.ratingCount } else { 0 };
+          let traitCount = switch (principalOps.get(personaTraits, pub.owner)) {
+            case null { 0 };
+            case (?ownerTraits) {
+              switch (textOps.get(ownerTraits, pub.personaId)) {
+                case null { 0 };
+                case (?pt) { pt.traits.size() };
+              };
+            };
+          };
+          buf.add({ published = pub; traitCount = traitCount; averageRating = avgRating });
+        };
+      };
+    };
+    let arr = Buffer.toArray(buf);
+    let start = if (offset >= arr.size()) { arr.size() } else { offset };
+    let end = if (start + limit > arr.size()) { arr.size() } else { start + limit };
+    let slice = Buffer.Buffer<Types.MarketplaceListing>(limit);
+    var i = start;
+    while (i < end) {
+      slice.add(arr[i]);
+      i += 1;
+    };
+    Buffer.toArray(slice);
+  };
+
+  /// Hire a persona from the marketplace.
+  public shared (msg) func hirePersona(personaId : Text, paymentType : Types.PaymentType) : async Types.MarketplaceOpResult {
+    switch (Auth.requireAuth(msg.caller)) { case (#err(_)) { return #Err("Not authenticated") }; case (#ok(())) {} };
+    let key = hireKey(msg.caller, personaId);
+    switch (textOps.get(activeHires, key)) {
+      case (?_) { return #Err("Already hired this persona") };
+      case null {};
+    };
+    switch (textOps.get(marketplace, personaId)) {
+      case null { return #Err("Persona not published") };
+      case (?pub) {
+        // For daily hires, require upfront payment
+        switch (paymentType) {
+          case (#Daily) {
+            if (pub.pricePerDay == 0) { return #Err("Daily hire not available") };
+            switch (walletPrincipal) {
+              case null {}; // dev mode — skip payment
+              case (?wp) {
+                let walletActor : actor {
+                  deductForRequest : (Principal, Types.TokenType, Nat) -> async Result.Result<(), Text>;
+                } = actor (Principal.toText(wp));
+                switch (await walletActor.deductForRequest(msg.caller, #ICP, pub.pricePerDay)) {
+                  case (#err(e)) { return #Err("Payment failed: " # e) };
+                  case (#ok(())) {
+                    let prev = switch (textOps.get(personaEarnings, personaId)) { case null { 0 }; case (?v) { v } };
+                    personaEarnings := textOps.put(personaEarnings, personaId, prev + pub.pricePerDay);
+                  };
+                };
+              };
+            };
+          };
+          case (#PerMessage) {}; // pay per message — no upfront cost
+        };
+        let hire : Types.PersonaHire = {
+          hirer = msg.caller;
+          personaId = personaId;
+          owner = pub.owner;
+          paymentType = paymentType;
+          expiresAt = switch (paymentType) {
+            case (#Daily) { Time.now() + 86_400_000_000_000 }; // 24h in nanoseconds
+            case (#PerMessage) { 0 };
+          };
+          messagesUsed = 0;
+          totalPaid = switch (paymentType) { case (#Daily) { pub.pricePerDay }; case (#PerMessage) { 0 } };
+          startedAt = Time.now();
+        };
+        activeHires := textOps.put(activeHires, key, hire);
+        // Increment hire count
+        marketplace := textOps.put(marketplace, personaId, {
+          owner = pub.owner; personaId = pub.personaId; personaName = pub.personaName;
+          personaDescription = pub.personaDescription; pricePerMessage = pub.pricePerMessage;
+          pricePerDay = pub.pricePerDay; totalEarnings = pub.totalEarnings;
+          hireCount = pub.hireCount + 1; ratingSum = pub.ratingSum; ratingCount = pub.ratingCount;
+          corpusIds = pub.corpusIds; category = pub.category; isActive = pub.isActive;
+          publishedAt = pub.publishedAt;
+        });
+        #Ok("Hired successfully");
+      };
+    };
+  };
+
+  /// End a hire of a marketplace persona.
+  public shared (msg) func endHire(personaId : Text) : async Types.MarketplaceOpResult {
+    switch (Auth.requireAuth(msg.caller)) { case (#err(_)) { return #Err("Not authenticated") }; case (#ok(())) {} };
+    activeHires := textOps.delete(activeHires, hireKey(msg.caller, personaId));
+    #Ok("Hire ended");
+  };
+
+  /// List all active hires for the caller.
+  public shared (msg) func listMyHires() : async [Types.PersonaHire] {
+    let buf = Buffer.Buffer<Types.PersonaHire>(8);
+    let prefix = Principal.toText(msg.caller) # ":";
+    for ((k, hire) in textOps.entries(activeHires)) {
+      if (Text.startsWith(k, #text prefix)) {
+        let isValid = switch (hire.paymentType) {
+          case (#Daily) { Time.now() < hire.expiresAt };
+          case (#PerMessage) { true };
+        };
+        if (isValid) { buf.add(hire) };
+      };
+    };
+    Buffer.toArray(buf);
+  };
+
+  /// Rate a hired persona (1-5).
+  public shared (msg) func ratePersona(personaId : Text, rating : Nat) : async Types.MarketplaceOpResult {
+    switch (Auth.requireAuth(msg.caller)) { case (#err(_)) { return #Err("Not authenticated") }; case (#ok(())) {} };
+    if (rating < 1 or rating > 5) { return #Err("Rating must be 1-5") };
+    let rKey = hireKey(msg.caller, personaId);
+    switch (textOps.get(ratingTracker, rKey)) {
+      case (?true) { return #Err("Already rated") };
+      case _ {};
+    };
+    switch (textOps.get(marketplace, personaId)) {
+      case null { return #Err("Persona not published") };
+      case (?pub) {
+        marketplace := textOps.put(marketplace, personaId, {
+          owner = pub.owner; personaId = pub.personaId; personaName = pub.personaName;
+          personaDescription = pub.personaDescription; pricePerMessage = pub.pricePerMessage;
+          pricePerDay = pub.pricePerDay; totalEarnings = pub.totalEarnings;
+          hireCount = pub.hireCount; ratingSum = pub.ratingSum + rating;
+          ratingCount = pub.ratingCount + 1; corpusIds = pub.corpusIds;
+          category = pub.category; isActive = pub.isActive; publishedAt = pub.publishedAt;
+        });
+        ratingTracker := textOps.put(ratingTracker, rKey, true);
+        #Ok("Rated successfully");
+      };
+    };
+  };
+
+  /// Get earnings for a persona (owner only).
+  public shared (msg) func getPersonaEarnings(personaId : Text) : async Types.MarketplaceOpResult {
+    switch (Auth.requireAuth(msg.caller)) { case (#err(_)) { return #Err("Not authenticated") }; case (#ok(())) {} };
+    switch (textOps.get(marketplace, personaId)) {
+      case null { return #Err("Persona not published") };
+      case (?pub) {
+        if (pub.owner != msg.caller) { return #Err("Not the owner") };
+        let earnings = switch (textOps.get(personaEarnings, personaId)) { case null { 0 }; case (?v) { v } };
+        #Ok(debug_show(earnings));
+      };
+    };
+  };
+
+  /// Withdraw persona earnings to owner's wallet.
+  public shared (msg) func withdrawPersonaEarnings(personaId : Text, amount : Nat) : async Types.MarketplaceOpResult {
+    switch (Auth.requireAuth(msg.caller)) { case (#err(_)) { return #Err("Not authenticated") }; case (#ok(())) {} };
+    switch (textOps.get(marketplace, personaId)) {
+      case null { return #Err("Persona not published") };
+      case (?pub) {
+        if (pub.owner != msg.caller) { return #Err("Not the owner") };
+        let earnings = switch (textOps.get(personaEarnings, personaId)) { case null { 0 }; case (?v) { v } };
+        if (amount > earnings) { return #Err("Insufficient earnings") };
+        // Saga: debit first, then credit wallet
+        personaEarnings := textOps.put(personaEarnings, personaId, earnings - amount);
+        switch (walletPrincipal) {
+          case null { #Ok("Withdrawn " # debug_show(amount) # " e8s (dev mode)") };
+          case (?wp) {
+            let walletActor : actor {
+              creditForEarnings : (Principal, Types.TokenType, Nat) -> async Result.Result<(), Text>;
+            } = actor (Principal.toText(wp));
+            switch (await walletActor.creditForEarnings(msg.caller, #ICP, amount)) {
+              case (#ok(())) { #Ok("Withdrawn " # debug_show(amount) # " e8s") };
+              case (#err(e)) {
+                // Compensate: re-credit earnings
+                personaEarnings := textOps.put(personaEarnings, personaId, earnings);
+                #Err("Withdrawal failed: " # e);
+              };
+            };
+          };
+        };
+      };
+    };
+  };
+
+  /// Mint a persona as an NFT (stores metadata on-chain).
+  public shared (msg) func mintPersonaNft(personaId : Text) : async Types.MarketplaceOpResult {
+    switch (Auth.requireAuth(msg.caller)) { case (#err(_)) { return #Err("Not authenticated") }; case (#ok(())) {} };
+    switch (findPersonaByOwner(msg.caller, personaId)) {
+      case null { return #Err("You don't own this persona") };
+      case (?_persona) {
+        switch (textOps.get(personaNfts, personaId)) {
+          case (?_) { return #Err("Already minted as NFT") };
+          case null {
+            nftTokenCounter += 1;
+            let traitSnapshot = switch (principalOps.get(personaTraits, msg.caller)) {
+              case null { [] : [PersonaTrait] };
+              case (?ownerTraits) {
+                switch (textOps.get(ownerTraits, personaId)) {
+                  case null { [] : [PersonaTrait] };
+                  case (?pt) { pt.traits };
+                };
+              };
+            };
+            let corpusRefs = switch (textOps.get(marketplace, personaId)) {
+              case null { [] : [Text] };
+              case (?pub) { pub.corpusIds };
+            };
+            let nft : Types.PersonaNftMetadata = {
+              personaId = personaId;
+              owner = msg.caller;
+              traitSnapshot = traitSnapshot;
+              corpusRefs = corpusRefs;
+              mintedAt = Time.now();
+              tokenId = nftTokenCounter;
+            };
+            personaNfts := textOps.put(personaNfts, personaId, nft);
+            #Ok("Minted NFT #" # debug_show(nftTokenCounter));
+          };
+        };
+      };
+    };
+  };
+
+  /// Get NFT metadata for a persona.
+  public shared (msg) func getPersonaNft(personaId : Text) : async ?Types.PersonaNftMetadata {
+    textOps.get(personaNfts, personaId);
   };
 
   /// Delete a corpus (knowledge base) from MagickMind.

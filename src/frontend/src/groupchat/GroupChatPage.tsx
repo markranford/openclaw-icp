@@ -24,6 +24,7 @@ import {
   type CandidPersona,
 } from "../api/gateway.did";
 import { Principal } from "@icp-sdk/core/principal";
+import MarketplaceDrawer from "./MarketplaceDrawer";
 
 /** Persona border color palette for group chat messages. */
 const PERSONA_COLORS = ["#6366f1", "#ec4899", "#14b8a6", "#f59e0b", "#8b5cf6"];
@@ -74,6 +75,7 @@ export default function GroupChatPage() {
   const [turnOrder, setTurnOrder] = useState<"RoundRobin" | "Facilitator" | "FreeForm">("RoundRobin");
   const [facilitatorId, setFacilitatorId] = useState<string>("");
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
+  const [showMarketplace, setShowMarketplace] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
   // Invite users state
@@ -346,22 +348,39 @@ export default function GroupChatPage() {
           }}
         >
           <h2 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 700 }}>Group Chats</h2>
-          <button
-            onClick={handleNewGroup}
-            style={{
-              backgroundColor: "var(--accent)",
-              color: "white",
-              border: "none",
-              borderRadius: "8px",
-              padding: "0.4rem 0.75rem",
-              fontSize: "0.78rem",
-              fontWeight: 600,
-              cursor: "pointer",
-              transition: "opacity 0.15s ease",
-            }}
-          >
-            + New Group
-          </button>
+          <div style={{ display: "flex", gap: "6px" }}>
+            <button
+              onClick={() => setShowMarketplace(true)}
+              style={{
+                background: "linear-gradient(135deg, #00d2ff, #7b2ff7)",
+                color: "white",
+                border: "none",
+                borderRadius: "8px",
+                padding: "0.4rem 0.75rem",
+                fontSize: "0.78rem",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Marketplace
+            </button>
+            <button
+              onClick={handleNewGroup}
+              style={{
+                backgroundColor: "var(--accent)",
+                color: "white",
+                border: "none",
+                borderRadius: "8px",
+                padding: "0.4rem 0.75rem",
+                fontSize: "0.78rem",
+                fontWeight: 600,
+                cursor: "pointer",
+                transition: "opacity 0.15s ease",
+              }}
+            >
+              + New
+            </button>
+          </div>
         </div>
         <div style={{ flex: 1, overflowY: "auto", padding: "0.5rem" }}>
           {isLoadingList && (
@@ -997,6 +1016,8 @@ export default function GroupChatPage() {
           50% { opacity: 0.6; transform: scale(0.9); }
         }
       `}</style>
+
+      <MarketplaceDrawer isOpen={showMarketplace} onClose={() => setShowMarketplace(false)} onHired={() => {}} />
     </div>
   );
 }

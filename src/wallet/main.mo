@@ -557,6 +557,35 @@ persistent actor class Wallet(deployer : Principal) = self {
     #ok(());
   };
 
+  /// Credit a user's internal balance for persona earnings withdrawal (gateway-only).
+  public shared (msg) func creditForEarnings(
+    user : Principal,
+    token : TokenType,
+    amount : Nat,
+  ) : async Result.Result<(), Text> {
+    switch (gatewayPrincipal) {
+      case null { return #err("Gateway not configured") };
+      case (?gw) {
+        if (msg.caller != gw) { return #err("Unauthorized") };
+      };
+    };
+
+    let tokenText = tokenToText(token);
+    let currentBalance = getBalance(user, tokenText);
+    setBalance(user, tokenText, currentBalance + amount);
+    recordTransaction(user, {
+      id = nextTxId();
+      tokenType = token;
+      amount = amount;
+      txType = #Refund;  // Reuse Refund type for credits
+      counterparty = null;
+      memo = ?"Persona marketplace earnings";
+      timestamp = Time.now();
+    });
+
+    #ok(());
+  };
+
   /// Refund a fee after a failed LLM request (gateway-only).
   /// This is the "compensating action" of the saga. Called by the Gateway when
   /// the HTTPS outcall to the LLM provider fails after payment was deducted.
