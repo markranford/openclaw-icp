@@ -3042,6 +3042,120 @@ persistent actor class Gateway(deployer : Principal) {
     };
   };
 
+  // ── MagickMind Persona API ──────────────────────────────────────
+
+  /// Generate a system prompt for a MagickMind persona.
+  public shared (msg) func mmPreparePersona(personaId : Text) : async Types.MemoryResult {
+    switch (Auth.requireAuth(msg.caller)) { case (#err(_)) { return #NotConfigured("Not authenticated") }; case (#ok(())) {} };
+    let apiKey = switch (await getApiKey(msg.caller, "magickmind_api_key")) { case (#err(_)) { return #NotConfigured("No MagickMind API key. Add one in Settings.") }; case (#ok(k)) { k } };
+    switch (await HttpOutcalls.preparePersona(apiKey, personaId, transform)) {
+      case (#ok(text)) { #Success(text) }; case (#err(#ProviderError(e))) { #Failed(e) }; case (#err(_)) { #Failed("Unexpected error") };
+    };
+  };
+
+  /// List all versions (evolution snapshots) for a MagickMind persona.
+  public shared (msg) func mmListPersonaVersions(personaId : Text) : async Types.MemoryResult {
+    switch (Auth.requireAuth(msg.caller)) { case (#err(_)) { return #NotConfigured("Not authenticated") }; case (#ok(())) {} };
+    let apiKey = switch (await getApiKey(msg.caller, "magickmind_api_key")) { case (#err(_)) { return #NotConfigured("No MagickMind API key. Add one in Settings.") }; case (#ok(k)) { k } };
+    switch (await HttpOutcalls.listPersonaVersions(apiKey, personaId, transform)) {
+      case (#ok(text)) { #Success(text) }; case (#err(#ProviderError(e))) { #Failed(e) }; case (#err(_)) { #Failed("Unexpected error") };
+    };
+  };
+
+  /// Get the active (current) version of a MagickMind persona.
+  public shared (msg) func mmGetActivePersonaVersion(personaId : Text) : async Types.MemoryResult {
+    switch (Auth.requireAuth(msg.caller)) { case (#err(_)) { return #NotConfigured("Not authenticated") }; case (#ok(())) {} };
+    let apiKey = switch (await getApiKey(msg.caller, "magickmind_api_key")) { case (#err(_)) { return #NotConfigured("No MagickMind API key. Add one in Settings.") }; case (#ok(k)) { k } };
+    switch (await HttpOutcalls.getActivePersonaVersion(apiKey, personaId, transform)) {
+      case (#ok(text)) { #Success(text) }; case (#err(#ProviderError(e))) { #Failed(e) }; case (#err(_)) { #Failed("Unexpected error") };
+    };
+  };
+
+  /// Get the effective (runtime-blended) personality for a persona.
+  public shared (msg) func mmGetEffectivePersonality(personaId : Text) : async Types.MemoryResult {
+    switch (Auth.requireAuth(msg.caller)) { case (#err(_)) { return #NotConfigured("Not authenticated") }; case (#ok(())) {} };
+    let apiKey = switch (await getApiKey(msg.caller, "magickmind_api_key")) { case (#err(_)) { return #NotConfigured("No MagickMind API key. Add one in Settings.") }; case (#ok(k)) { k } };
+    switch (await HttpOutcalls.getEffectivePersonality(apiKey, personaId, transform)) {
+      case (#ok(text)) { #Success(text) }; case (#err(#ProviderError(e))) { #Failed(e) }; case (#err(_)) { #Failed("Unexpected error") };
+    };
+  };
+
+  // ── MagickMind Blueprint & Traits API ───────────────────────────
+
+  /// List all persona blueprints.
+  public shared (msg) func mmListBlueprints() : async Types.MemoryResult {
+    switch (Auth.requireAuth(msg.caller)) { case (#err(_)) { return #NotConfigured("Not authenticated") }; case (#ok(())) {} };
+    let apiKey = switch (await getApiKey(msg.caller, "magickmind_api_key")) { case (#err(_)) { return #NotConfigured("No MagickMind API key. Add one in Settings.") }; case (#ok(k)) { k } };
+    switch (await HttpOutcalls.listBlueprints(apiKey, transform)) {
+      case (#ok(text)) { #Success(text) }; case (#err(#ProviderError(e))) { #Failed(e) }; case (#err(_)) { #Failed("Unexpected error") };
+    };
+  };
+
+  /// Get a blueprint by its key name.
+  public shared (msg) func mmGetBlueprintByKey(blueprintKey : Text) : async Types.MemoryResult {
+    switch (Auth.requireAuth(msg.caller)) { case (#err(_)) { return #NotConfigured("Not authenticated") }; case (#ok(())) {} };
+    let apiKey = switch (await getApiKey(msg.caller, "magickmind_api_key")) { case (#err(_)) { return #NotConfigured("No MagickMind API key. Add one in Settings.") }; case (#ok(k)) { k } };
+    switch (await HttpOutcalls.getBlueprintByKey(apiKey, blueprintKey, transform)) {
+      case (#ok(text)) { #Success(text) }; case (#err(#ProviderError(e))) { #Failed(e) }; case (#err(_)) { #Failed("Unexpected error") };
+    };
+  };
+
+  /// Hydrate a blueprint (expand into full trait definitions).
+  public shared (msg) func mmHydrateBlueprint(blueprintId : Text) : async Types.MemoryResult {
+    switch (Auth.requireAuth(msg.caller)) { case (#err(_)) { return #NotConfigured("Not authenticated") }; case (#ok(())) {} };
+    let apiKey = switch (await getApiKey(msg.caller, "magickmind_api_key")) { case (#err(_)) { return #NotConfigured("No MagickMind API key. Add one in Settings.") }; case (#ok(k)) { k } };
+    switch (await HttpOutcalls.hydrateBlueprint(apiKey, blueprintId, transform)) {
+      case (#ok(text)) { #Success(text) }; case (#err(#ProviderError(e))) { #Failed(e) }; case (#err(_)) { #Failed("Unexpected error") };
+    };
+  };
+
+  /// List all server-side traits from MagickMind.
+  public shared (msg) func mmListTraits() : async Types.MemoryResult {
+    switch (Auth.requireAuth(msg.caller)) { case (#err(_)) { return #NotConfigured("Not authenticated") }; case (#ok(())) {} };
+    let apiKey = switch (await getApiKey(msg.caller, "magickmind_api_key")) { case (#err(_)) { return #NotConfigured("No MagickMind API key. Add one in Settings.") }; case (#ok(k)) { k } };
+    switch (await HttpOutcalls.listTraits(apiKey, transform)) {
+      case (#ok(text)) { #Success(text) }; case (#err(#ProviderError(e))) { #Failed(e) }; case (#err(_)) { #Failed("Unexpected error") };
+    };
+  };
+
+  // ── MagickMind Message History & Participants ───────────────────
+
+  /// Get paginated message history from a mindspace.
+  public shared (msg) func mmGetMessages(mindspaceId : Text, limit : Nat, order : Text, cursor : ?Text) : async Types.MemoryResult {
+    switch (Auth.requireAuth(msg.caller)) { case (#err(_)) { return #NotConfigured("Not authenticated") }; case (#ok(())) {} };
+    let apiKey = switch (await getApiKey(msg.caller, "magickmind_api_key")) { case (#err(_)) { return #NotConfigured("No MagickMind API key. Add one in Settings.") }; case (#ok(k)) { k } };
+    switch (await HttpOutcalls.getMindspaceMessages(apiKey, mindspaceId, limit, order, cursor, transform)) {
+      case (#ok(text)) { #Success(text) }; case (#err(#ProviderError(e))) { #Failed(e) }; case (#err(_)) { #Failed("Unexpected error") };
+    };
+  };
+
+  /// Add a participant to a mindspace.
+  public shared (msg) func mmAddParticipant(mindspaceId : Text, userId : Text, role : Text) : async Types.MemoryResult {
+    switch (Auth.requireAuth(msg.caller)) { case (#err(_)) { return #NotConfigured("Not authenticated") }; case (#ok(())) {} };
+    let apiKey = switch (await getApiKey(msg.caller, "magickmind_api_key")) { case (#err(_)) { return #NotConfigured("No MagickMind API key. Add one in Settings.") }; case (#ok(k)) { k } };
+    switch (await HttpOutcalls.addMindspaceParticipant(apiKey, mindspaceId, userId, role, transform)) {
+      case (#ok(text)) { #Success(text) }; case (#err(#ProviderError(e))) { #Failed(e) }; case (#err(_)) { #Failed("Unexpected error") };
+    };
+  };
+
+  /// Create a persona from a blueprint on MagickMind.
+  public shared (msg) func mmCreatePersonaFromBlueprint(blueprintId : Text, name : Text, description : Text) : async Types.MemoryResult {
+    switch (Auth.requireAuth(msg.caller)) { case (#err(_)) { return #NotConfigured("Not authenticated") }; case (#ok(())) {} };
+    let apiKey = switch (await getApiKey(msg.caller, "magickmind_api_key")) { case (#err(_)) { return #NotConfigured("No MagickMind API key. Add one in Settings.") }; case (#ok(k)) { k } };
+    switch (await HttpOutcalls.createPersonaFromBlueprint(apiKey, blueprintId, name, description, transform)) {
+      case (#ok(text)) { #Success(text) }; case (#err(#ProviderError(e))) { #Failed(e) }; case (#err(_)) { #Failed("Unexpected error") };
+    };
+  };
+
+  /// Invalidate MagickMind runtime cache (force re-blend).
+  public shared (msg) func mmInvalidateCache() : async Types.MemoryResult {
+    switch (Auth.requireAuth(msg.caller)) { case (#err(_)) { return #NotConfigured("Not authenticated") }; case (#ok(())) {} };
+    let apiKey = switch (await getApiKey(msg.caller, "magickmind_api_key")) { case (#err(_)) { return #NotConfigured("No MagickMind API key. Add one in Settings.") }; case (#ok(k)) { k } };
+    switch (await HttpOutcalls.invalidateRuntimeCache(apiKey, transform)) {
+      case (#ok(text)) { #Success(text) }; case (#err(#ProviderError(e))) { #Failed(e) }; case (#err(_)) { #Failed("Unexpected error") };
+    };
+  };
+
   /// Delete a corpus (knowledge base) from MagickMind.
   public shared (msg) func deleteCorpus(corpusId : Text) : async Types.MemoryResult {
     switch (Auth.requireAuth(msg.caller)) {

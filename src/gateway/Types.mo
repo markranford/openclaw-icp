@@ -553,6 +553,80 @@ module {
     createdAt : Text;
   };
 
+  // ── MagickMind Persona API Types ────────────────────────────────
+
+  /// Server-side persona (from MagickMind API).
+  public type MmPersona = {
+    id : Text;
+    name : Text;
+    description : Text;
+    blueprintId : ?Text;
+    projectId : Text;
+    createdAt : Text;
+  };
+
+  /// Persona version (evolution snapshot).
+  public type MmPersonaVersion = {
+    id : Text;
+    personaId : Text;
+    version : Nat;
+    systemPrompt : Text;
+    traits : Text; // JSON blob of trait values
+    createdAt : Text;
+  };
+
+  /// Effective personality (runtime-blended result).
+  public type MmEffectivePersonality = {
+    personaId : Text;
+    systemPrompt : Text;
+    traits : Text; // JSON blob
+    blendedAt : Text;
+  };
+
+  // ── MagickMind Blueprint Types ──────────────────────────────────
+
+  /// A persona blueprint template.
+  public type MmBlueprint = {
+    id : Text;
+    key : Text;
+    name : Text;
+    description : Text;
+    traits : Text; // JSON blob of trait definitions
+    createdAt : Text;
+  };
+
+  /// A trait definition from the server.
+  public type MmTrait = {
+    id : Text;
+    name : Text;
+    traitType : Text;
+    description : Text;
+    category : Text;
+    options : Text; // JSON array
+    defaultValue : Text;
+  };
+
+  // ── MagickMind Message History Types ────────────────────────────
+
+  /// Paginated messages from a mindspace.
+  public type MmMessagePage = {
+    messages : Text; // JSON array of messages
+    hasMore : Bool;
+    cursor : ?Text;
+  };
+
+  // ── Temporal Memory Query ───────────────────────────────────────
+
+  /// Temporal preset for smart episodic memory queries.
+  public type TemporalPreset = {
+    #Today;
+    #ThisWeek;
+    #ThisMonth;
+    #ThisYear;
+    #AllTime;
+    #Custom; // uses the freeform query
+  };
+
   /// Memory result wrapper.
   public type MemoryResult = {
     #Success : Text;     // JSON string result

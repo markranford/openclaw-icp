@@ -509,6 +509,22 @@ export default function MemoryContextPanel({
             </div>
           )}
         </div>
+
+          {/* ── PERSONA INSIGHT ─────── */}
+          <div style={{ marginTop: '16px' }}>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: '#666', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>Persona Insight</div>
+            <button
+              style={{ width: '100%', padding: '8px', borderRadius: '8px', border: '1px solid #ffffff15', background: '#0d1117', color: '#c084fc', fontSize: '12px', cursor: 'pointer' }}
+              onClick={async () => {
+                try {
+                  const gw = await getGateway();
+                  const res = await gw.mmListTraits();
+                  const r = 'Success' in res ? res.Success : ('Failed' in res ? res.Failed : 'Not configured');
+                  alert('Server Traits:\n' + r.slice(0, 500));
+                } catch (e: any) { alert('Error: ' + e.message); }
+              }}
+            >View Server Traits</button>
+          </div>
       </div>
     </div>
   );

@@ -978,4 +978,362 @@ module {
       #err(#ProviderError("MagickMind Delete Corpus HTTPS outcall failed"));
     };
   };
+
+  // ── MagickMind Persona API ──────────────────────────────────────
+
+  /// Prepare (generate) a system prompt for a persona.
+  /// POST https://api.magickmind.ai/v1/persona/{personaId}/prepare
+  public func preparePersona(
+    apiKey : Text,
+    personaId : Text,
+    transformFn : shared query (IC.TransformArg) -> async IC.HttpRequestResult,
+  ) : async Result.Result<Text, Types.OpenClawError> {
+    let request : IC.HttpRequestArgs = {
+      url = "https://api.magickmind.ai/v1/persona/" # personaId # "/prepare";
+      max_response_bytes = ?MAX_RESPONSE_BYTES;
+      headers = [
+        { name = "Authorization"; value = "Bearer " # apiKey },
+        { name = "Content-Type"; value = "application/json" },
+      ];
+      body = ?Text.encodeUtf8("{}");
+      method = #post;
+      transform = ?{ function = transformFn; context = Blob.fromArray([]) };
+      is_replicated = null;
+    };
+    try {
+      let response = await Call.httpRequest(request);
+      if (response.status != 200) {
+        let errorBody = switch (Text.decodeUtf8(response.body)) { case (?t) { t }; case null { "Non-UTF8" }; };
+        return #err(#ProviderError("MagickMind Prepare Persona status " # debug_show(response.status) # ": " # errorBody));
+      };
+      switch (Text.decodeUtf8(response.body)) { case null { #ok("{}") }; case (?text) { #ok(text) }; };
+    } catch (_e) { #err(#ProviderError("MagickMind Prepare Persona HTTPS outcall failed")) };
+  };
+
+  /// List persona versions (evolution history).
+  /// GET https://api.magickmind.ai/v1/persona/{personaId}/version
+  public func listPersonaVersions(
+    apiKey : Text,
+    personaId : Text,
+    transformFn : shared query (IC.TransformArg) -> async IC.HttpRequestResult,
+  ) : async Result.Result<Text, Types.OpenClawError> {
+    let request : IC.HttpRequestArgs = {
+      url = "https://api.magickmind.ai/v1/persona/" # personaId # "/version";
+      max_response_bytes = ?MAX_RESPONSE_BYTES;
+      headers = [
+        { name = "Authorization"; value = "Bearer " # apiKey },
+      ];
+      body = null;
+      method = #get;
+      transform = ?{ function = transformFn; context = Blob.fromArray([]) };
+      is_replicated = null;
+    };
+    try {
+      let response = await Call.httpRequest(request);
+      if (response.status != 200) {
+        let errorBody = switch (Text.decodeUtf8(response.body)) { case (?t) { t }; case null { "Non-UTF8" }; };
+        return #err(#ProviderError("MagickMind Persona Versions status " # debug_show(response.status) # ": " # errorBody));
+      };
+      switch (Text.decodeUtf8(response.body)) { case null { #ok("[]") }; case (?text) { #ok(text) }; };
+    } catch (_e) { #err(#ProviderError("MagickMind Persona Versions HTTPS outcall failed")) };
+  };
+
+  /// Get the active (current) persona version.
+  /// GET https://api.magickmind.ai/v1/persona/{personaId}/version/active
+  public func getActivePersonaVersion(
+    apiKey : Text,
+    personaId : Text,
+    transformFn : shared query (IC.TransformArg) -> async IC.HttpRequestResult,
+  ) : async Result.Result<Text, Types.OpenClawError> {
+    let request : IC.HttpRequestArgs = {
+      url = "https://api.magickmind.ai/v1/persona/" # personaId # "/version/active";
+      max_response_bytes = ?MAX_RESPONSE_BYTES;
+      headers = [
+        { name = "Authorization"; value = "Bearer " # apiKey },
+      ];
+      body = null;
+      method = #get;
+      transform = ?{ function = transformFn; context = Blob.fromArray([]) };
+      is_replicated = null;
+    };
+    try {
+      let response = await Call.httpRequest(request);
+      if (response.status != 200) {
+        let errorBody = switch (Text.decodeUtf8(response.body)) { case (?t) { t }; case null { "Non-UTF8" }; };
+        return #err(#ProviderError("MagickMind Active Persona Version status " # debug_show(response.status) # ": " # errorBody));
+      };
+      switch (Text.decodeUtf8(response.body)) { case null { #ok("{}") }; case (?text) { #ok(text) }; };
+    } catch (_e) { #err(#ProviderError("MagickMind Active Persona Version HTTPS outcall failed")) };
+  };
+
+  /// Get the effective (runtime-blended) personality for a persona.
+  /// GET https://api.magickmind.ai/v1/runtime/effective-personality/{personaId}
+  public func getEffectivePersonality(
+    apiKey : Text,
+    personaId : Text,
+    transformFn : shared query (IC.TransformArg) -> async IC.HttpRequestResult,
+  ) : async Result.Result<Text, Types.OpenClawError> {
+    let request : IC.HttpRequestArgs = {
+      url = "https://api.magickmind.ai/v1/runtime/effective-personality/" # personaId;
+      max_response_bytes = ?MAX_RESPONSE_BYTES;
+      headers = [
+        { name = "Authorization"; value = "Bearer " # apiKey },
+      ];
+      body = null;
+      method = #get;
+      transform = ?{ function = transformFn; context = Blob.fromArray([]) };
+      is_replicated = null;
+    };
+    try {
+      let response = await Call.httpRequest(request);
+      if (response.status != 200) {
+        let errorBody = switch (Text.decodeUtf8(response.body)) { case (?t) { t }; case null { "Non-UTF8" }; };
+        return #err(#ProviderError("MagickMind Effective Personality status " # debug_show(response.status) # ": " # errorBody));
+      };
+      switch (Text.decodeUtf8(response.body)) { case null { #ok("{}") }; case (?text) { #ok(text) }; };
+    } catch (_e) { #err(#ProviderError("MagickMind Effective Personality HTTPS outcall failed")) };
+  };
+
+  // ── MagickMind Blueprint & Traits API ───────────────────────────
+
+  /// List all blueprints.
+  /// GET https://api.magickmind.ai/v1/blueprints
+  public func listBlueprints(
+    apiKey : Text,
+    transformFn : shared query (IC.TransformArg) -> async IC.HttpRequestResult,
+  ) : async Result.Result<Text, Types.OpenClawError> {
+    let request : IC.HttpRequestArgs = {
+      url = "https://api.magickmind.ai/v1/blueprints";
+      max_response_bytes = ?MAX_RESPONSE_BYTES;
+      headers = [
+        { name = "Authorization"; value = "Bearer " # apiKey },
+      ];
+      body = null;
+      method = #get;
+      transform = ?{ function = transformFn; context = Blob.fromArray([]) };
+      is_replicated = null;
+    };
+    try {
+      let response = await Call.httpRequest(request);
+      if (response.status != 200) {
+        let errorBody = switch (Text.decodeUtf8(response.body)) { case (?t) { t }; case null { "Non-UTF8" }; };
+        return #err(#ProviderError("MagickMind List Blueprints status " # debug_show(response.status) # ": " # errorBody));
+      };
+      switch (Text.decodeUtf8(response.body)) { case null { #ok("[]") }; case (?text) { #ok(text) }; };
+    } catch (_e) { #err(#ProviderError("MagickMind List Blueprints HTTPS outcall failed")) };
+  };
+
+  /// Get a blueprint by its key.
+  /// GET https://api.magickmind.ai/v1/blueprints/by-key?key={key}
+  public func getBlueprintByKey(
+    apiKey : Text,
+    blueprintKey : Text,
+    transformFn : shared query (IC.TransformArg) -> async IC.HttpRequestResult,
+  ) : async Result.Result<Text, Types.OpenClawError> {
+    let request : IC.HttpRequestArgs = {
+      url = "https://api.magickmind.ai/v1/blueprints/by-key?key=" # blueprintKey;
+      max_response_bytes = ?MAX_RESPONSE_BYTES;
+      headers = [
+        { name = "Authorization"; value = "Bearer " # apiKey },
+      ];
+      body = null;
+      method = #get;
+      transform = ?{ function = transformFn; context = Blob.fromArray([]) };
+      is_replicated = null;
+    };
+    try {
+      let response = await Call.httpRequest(request);
+      if (response.status != 200) {
+        let errorBody = switch (Text.decodeUtf8(response.body)) { case (?t) { t }; case null { "Non-UTF8" }; };
+        return #err(#ProviderError("MagickMind Get Blueprint status " # debug_show(response.status) # ": " # errorBody));
+      };
+      switch (Text.decodeUtf8(response.body)) { case null { #ok("{}") }; case (?text) { #ok(text) }; };
+    } catch (_e) { #err(#ProviderError("MagickMind Get Blueprint HTTPS outcall failed")) };
+  };
+
+  /// Hydrate a blueprint (expand it into full trait definitions).
+  /// POST https://api.magickmind.ai/v1/blueprints/{blueprintId}/hydrate
+  public func hydrateBlueprint(
+    apiKey : Text,
+    blueprintId : Text,
+    transformFn : shared query (IC.TransformArg) -> async IC.HttpRequestResult,
+  ) : async Result.Result<Text, Types.OpenClawError> {
+    let request : IC.HttpRequestArgs = {
+      url = "https://api.magickmind.ai/v1/blueprints/" # blueprintId # "/hydrate";
+      max_response_bytes = ?MAX_RESPONSE_BYTES;
+      headers = [
+        { name = "Authorization"; value = "Bearer " # apiKey },
+        { name = "Content-Type"; value = "application/json" },
+      ];
+      body = ?Text.encodeUtf8("{}");
+      method = #post;
+      transform = ?{ function = transformFn; context = Blob.fromArray([]) };
+      is_replicated = null;
+    };
+    try {
+      let response = await Call.httpRequest(request);
+      if (response.status != 200) {
+        let errorBody = switch (Text.decodeUtf8(response.body)) { case (?t) { t }; case null { "Non-UTF8" }; };
+        return #err(#ProviderError("MagickMind Hydrate Blueprint status " # debug_show(response.status) # ": " # errorBody));
+      };
+      switch (Text.decodeUtf8(response.body)) { case null { #ok("{}") }; case (?text) { #ok(text) }; };
+    } catch (_e) { #err(#ProviderError("MagickMind Hydrate Blueprint HTTPS outcall failed")) };
+  };
+
+  /// List all traits.
+  /// GET https://api.magickmind.ai/v1/traits
+  public func listTraits(
+    apiKey : Text,
+    transformFn : shared query (IC.TransformArg) -> async IC.HttpRequestResult,
+  ) : async Result.Result<Text, Types.OpenClawError> {
+    let request : IC.HttpRequestArgs = {
+      url = "https://api.magickmind.ai/v1/traits";
+      max_response_bytes = ?MAX_RESPONSE_BYTES;
+      headers = [
+        { name = "Authorization"; value = "Bearer " # apiKey },
+      ];
+      body = null;
+      method = #get;
+      transform = ?{ function = transformFn; context = Blob.fromArray([]) };
+      is_replicated = null;
+    };
+    try {
+      let response = await Call.httpRequest(request);
+      if (response.status != 200) {
+        let errorBody = switch (Text.decodeUtf8(response.body)) { case (?t) { t }; case null { "Non-UTF8" }; };
+        return #err(#ProviderError("MagickMind List Traits status " # debug_show(response.status) # ": " # errorBody));
+      };
+      switch (Text.decodeUtf8(response.body)) { case null { #ok("[]") }; case (?text) { #ok(text) }; };
+    } catch (_e) { #err(#ProviderError("MagickMind List Traits HTTPS outcall failed")) };
+  };
+
+  // ── MagickMind Message History ──────────────────────────────────
+
+  /// Get paginated message history from a mindspace.
+  /// GET https://api.magickmind.ai/v1/mindspaces/{mindspaceId}/messages?limit={limit}&order={order}&cursor={cursor}
+  public func getMindspaceMessages(
+    apiKey : Text,
+    mindspaceId : Text,
+    limit : Nat,
+    order : Text, // "asc" or "desc"
+    cursor : ?Text,
+    transformFn : shared query (IC.TransformArg) -> async IC.HttpRequestResult,
+  ) : async Result.Result<Text, Types.OpenClawError> {
+    var url = "https://api.magickmind.ai/v1/mindspaces/" # mindspaceId # "/messages?limit=" # debug_show(limit) # "&order=" # order;
+    switch (cursor) {
+      case (?c) { url := url # "&cursor=" # c };
+      case null {};
+    };
+    let request : IC.HttpRequestArgs = {
+      url = url;
+      max_response_bytes = ?MAX_RESPONSE_BYTES;
+      headers = [
+        { name = "Authorization"; value = "Bearer " # apiKey },
+      ];
+      body = null;
+      method = #get;
+      transform = ?{ function = transformFn; context = Blob.fromArray([]) };
+      is_replicated = null;
+    };
+    try {
+      let response = await Call.httpRequest(request);
+      if (response.status != 200) {
+        let errorBody = switch (Text.decodeUtf8(response.body)) { case (?t) { t }; case null { "Non-UTF8" }; };
+        return #err(#ProviderError("MagickMind Messages status " # debug_show(response.status) # ": " # errorBody));
+      };
+      switch (Text.decodeUtf8(response.body)) { case null { #ok("{}") }; case (?text) { #ok(text) }; };
+    } catch (_e) { #err(#ProviderError("MagickMind Messages HTTPS outcall failed")) };
+  };
+
+  /// Add a participant to a mindspace.
+  /// POST https://api.magickmind.ai/v1/mindspaces/{mindspaceId}/users
+  public func addMindspaceParticipant(
+    apiKey : Text,
+    mindspaceId : Text,
+    userId : Text,
+    role : Text, // "member" or "admin"
+    transformFn : shared query (IC.TransformArg) -> async IC.HttpRequestResult,
+  ) : async Result.Result<Text, Types.OpenClawError> {
+    let bodyJson = "{\"user_id\":\"" # escapeJson(userId) # "\",\"role\":\"" # escapeJson(role) # "\"}";
+    let request : IC.HttpRequestArgs = {
+      url = "https://api.magickmind.ai/v1/mindspaces/" # mindspaceId # "/users";
+      max_response_bytes = ?MAX_RESPONSE_BYTES;
+      headers = [
+        { name = "Authorization"; value = "Bearer " # apiKey },
+        { name = "Content-Type"; value = "application/json" },
+      ];
+      body = ?Text.encodeUtf8(bodyJson);
+      method = #post;
+      transform = ?{ function = transformFn; context = Blob.fromArray([]) };
+      is_replicated = null;
+    };
+    try {
+      let response = await Call.httpRequest(request);
+      if (response.status != 200 and response.status != 201) {
+        let errorBody = switch (Text.decodeUtf8(response.body)) { case (?t) { t }; case null { "Non-UTF8" }; };
+        return #err(#ProviderError("MagickMind Add Participant status " # debug_show(response.status) # ": " # errorBody));
+      };
+      switch (Text.decodeUtf8(response.body)) { case null { #ok("{}") }; case (?text) { #ok(text) }; };
+    } catch (_e) { #err(#ProviderError("MagickMind Add Participant HTTPS outcall failed")) };
+  };
+
+  /// Create a persona from a blueprint on MagickMind.
+  /// POST https://api.magickmind.ai/v1/persona/from-blueprint
+  public func createPersonaFromBlueprint(
+    apiKey : Text,
+    blueprintId : Text,
+    name : Text,
+    description : Text,
+    transformFn : shared query (IC.TransformArg) -> async IC.HttpRequestResult,
+  ) : async Result.Result<Text, Types.OpenClawError> {
+    let bodyJson = "{\"blueprint_id\":\"" # escapeJson(blueprintId) # "\",\"name\":\"" # escapeJson(name) # "\",\"description\":\"" # escapeJson(description) # "\"}";
+    let request : IC.HttpRequestArgs = {
+      url = "https://api.magickmind.ai/v1/persona/from-blueprint";
+      max_response_bytes = ?MAX_RESPONSE_BYTES;
+      headers = [
+        { name = "Authorization"; value = "Bearer " # apiKey },
+        { name = "Content-Type"; value = "application/json" },
+      ];
+      body = ?Text.encodeUtf8(bodyJson);
+      method = #post;
+      transform = ?{ function = transformFn; context = Blob.fromArray([]) };
+      is_replicated = null;
+    };
+    try {
+      let response = await Call.httpRequest(request);
+      if (response.status != 200 and response.status != 201) {
+        let errorBody = switch (Text.decodeUtf8(response.body)) { case (?t) { t }; case null { "Non-UTF8" }; };
+        return #err(#ProviderError("MagickMind Create Persona from Blueprint status " # debug_show(response.status) # ": " # errorBody));
+      };
+      switch (Text.decodeUtf8(response.body)) { case null { #ok("{}") }; case (?text) { #ok(text) }; };
+    } catch (_e) { #err(#ProviderError("MagickMind Create Persona from Blueprint HTTPS outcall failed")) };
+  };
+
+  /// Invalidate the runtime cache (force re-computation of effective personality).
+  /// POST https://api.magickmind.ai/v1/runtime/invalidate-cache
+  public func invalidateRuntimeCache(
+    apiKey : Text,
+    transformFn : shared query (IC.TransformArg) -> async IC.HttpRequestResult,
+  ) : async Result.Result<Text, Types.OpenClawError> {
+    let request : IC.HttpRequestArgs = {
+      url = "https://api.magickmind.ai/v1/runtime/invalidate-cache";
+      max_response_bytes = ?MAX_RESPONSE_BYTES;
+      headers = [
+        { name = "Authorization"; value = "Bearer " # apiKey },
+        { name = "Content-Type"; value = "application/json" },
+      ];
+      body = ?Text.encodeUtf8("{}");
+      method = #post;
+      transform = ?{ function = transformFn; context = Blob.fromArray([]) };
+      is_replicated = null;
+    };
+    try {
+      let response = await Call.httpRequest(request);
+      if (response.status != 200) {
+        let errorBody = switch (Text.decodeUtf8(response.body)) { case (?t) { t }; case null { "Non-UTF8" }; };
+        return #err(#ProviderError("MagickMind Invalidate Cache status " # debug_show(response.status) # ": " # errorBody));
+      };
+      switch (Text.decodeUtf8(response.body)) { case null { #ok("{}") }; case (?text) { #ok(text) }; };
+    } catch (_e) { #err(#ProviderError("MagickMind Invalidate Cache HTTPS outcall failed")) };
+  };
 }

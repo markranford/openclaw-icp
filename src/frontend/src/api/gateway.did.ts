@@ -513,6 +513,21 @@ export const idlFactory: IDL.InterfaceFactory = ({ IDL: _IDL }) => {
     getIngestionStatus: IDL.Func([IDL.Text, IDL.Text], [MemoryResult], []),
     listMindspaces: IDL.Func([], [MemoryResult], []),
     createMindspace: IDL.Func([IDL.Text, IDL.Text, IDL.Vec(IDL.Text), IDL.Text], [MemoryResult], []),
+    // Persona API
+    'mmPreparePersona': IDL.Func([IDL.Text], [MemoryResult], []),
+    'mmListPersonaVersions': IDL.Func([IDL.Text], [MemoryResult], []),
+    'mmGetActivePersonaVersion': IDL.Func([IDL.Text], [MemoryResult], []),
+    'mmGetEffectivePersonality': IDL.Func([IDL.Text], [MemoryResult], []),
+    // Blueprint & Traits API
+    'mmListBlueprints': IDL.Func([], [MemoryResult], []),
+    'mmGetBlueprintByKey': IDL.Func([IDL.Text], [MemoryResult], []),
+    'mmHydrateBlueprint': IDL.Func([IDL.Text], [MemoryResult], []),
+    'mmListTraits': IDL.Func([], [MemoryResult], []),
+    // Message History & Participants
+    'mmGetMessages': IDL.Func([IDL.Text, IDL.Nat, IDL.Text, IDL.Opt(IDL.Text)], [MemoryResult], []),
+    'mmAddParticipant': IDL.Func([IDL.Text, IDL.Text, IDL.Text], [MemoryResult], []),
+    'mmCreatePersonaFromBlueprint': IDL.Func([IDL.Text, IDL.Text, IDL.Text], [MemoryResult], []),
+    'mmInvalidateCache': IDL.Func([], [MemoryResult], []),
     health: IDL.Func([], [IDL.Text], ["query"]),
   });
 };
@@ -899,6 +914,30 @@ export interface GatewayService {
   listMindspaces: () => Promise<CandidMemoryResult>;
   /** Create a new mindspace. */
   createMindspace: (name: string, description: string, corpusIds: string[], msType: string) => Promise<CandidMemoryResult>;
+  /** Prepare a MagickMind persona for use. */
+  mmPreparePersona: (personaId: string) => Promise<CandidMemoryResult>;
+  /** List all versions of a MagickMind persona. */
+  mmListPersonaVersions: (personaId: string) => Promise<CandidMemoryResult>;
+  /** Get the active version of a MagickMind persona. */
+  mmGetActivePersonaVersion: (personaId: string) => Promise<CandidMemoryResult>;
+  /** Get the effective (runtime-blended) personality for a persona. */
+  mmGetEffectivePersonality: (personaId: string) => Promise<CandidMemoryResult>;
+  /** List all available persona blueprints. */
+  mmListBlueprints: () => Promise<CandidMemoryResult>;
+  /** Get a blueprint by its key. */
+  mmGetBlueprintByKey: (key: string) => Promise<CandidMemoryResult>;
+  /** Hydrate a blueprint to see full trait definitions. */
+  mmHydrateBlueprint: (blueprintId: string) => Promise<CandidMemoryResult>;
+  /** List all server-side traits. */
+  mmListTraits: () => Promise<CandidMemoryResult>;
+  /** Get paginated messages from a mindspace. */
+  mmGetMessages: (mindspaceId: string, limit: bigint, order: string, cursor: [] | [string]) => Promise<CandidMemoryResult>;
+  /** Add a participant to a mindspace. */
+  mmAddParticipant: (mindspaceId: string, userId: string, role: string) => Promise<CandidMemoryResult>;
+  /** Create a new persona from a blueprint. */
+  mmCreatePersonaFromBlueprint: (blueprintId: string, name: string, description: string) => Promise<CandidMemoryResult>;
+  /** Invalidate the MagickMind runtime cache. */
+  mmInvalidateCache: () => Promise<CandidMemoryResult>;
   /** Canister health check. Returns a status string. */
   health: () => Promise<string>;
 }
