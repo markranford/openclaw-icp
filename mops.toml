@@ -7,3 +7,4 @@ description = "ICP-native AI agent platform with on-chain LLM, HTTPS outcalls, v
 base = "0.16.0"
 llm = "2.1.0"
 ic = "3.2.0"
+json = "1.4.0"

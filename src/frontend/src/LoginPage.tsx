@@ -1,5 +1,25 @@
+/**
+ * @file Full-screen login page displayed to unauthenticated users.
+ *
+ * Shows the OpenClaw branding, a brief description of the platform's
+ * capabilities (on-chain LLMs, vetKD encryption, ICRC tokens, agent identity),
+ * and a single "Login with Internet Identity" button.
+ *
+ * In development mode, clicking the button triggers the dev identity flow
+ * (instant, no popup). In production, it opens the Internet Identity
+ * authentication popup via the {@link useAuth} hook.
+ *
+ * @module LoginPage
+ */
+
 import { useAuth } from "./auth/useAuth";
 
+/**
+ * Landing / login page component.
+ *
+ * Centered vertically and horizontally in the viewport. After successful
+ * login, the parent router renders the main app layout instead of this page.
+ */
 export default function LoginPage() {
   const { login } = useAuth();
 

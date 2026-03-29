@@ -1,0 +1,19 @@
+(variant { Init = record {
+  token_symbol = "TICP";
+  token_name = "Test ICP";
+  minting_account = record { owner = principal "qhgyw-owths-3xugy-2k5q2-trxg5-ke6xl-ihtik-xfgsb-2xdsv-k4mqn-oqe" };
+  transfer_fee = 10_000 : nat;
+  metadata = vec {};
+  initial_balances = vec {
+    record {
+      record { owner = principal "qhgyw-owths-3xugy-2k5q2-trxg5-ke6xl-ihtik-xfgsb-2xdsv-k4mqn-oqe" };
+      10_000_000_000_000 : nat;
+    };
+  };
+  archive_options = record {
+    num_blocks_to_archive = 1000 : nat64;
+    trigger_threshold = 2000 : nat64;
+    controller_id = principal "qhgyw-owths-3xugy-2k5q2-trxg5-ke6xl-ihtik-xfgsb-2xdsv-k4mqn-oqe";
+  };
+  feature_flags = opt record { icrc2 = true };
+}})

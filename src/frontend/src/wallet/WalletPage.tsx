@@ -1,3 +1,33 @@
+/**
+ * @file Wallet page for managing token balances, deposits, and withdrawals.
+ *
+ * This page provides a full wallet interface for the three supported ICRC-1
+ * tokens (ICP, ckBTC, ckUSDC). It communicates with the Wallet canister to:
+ *
+ * ## Deposit flow
+ * 1. **Get deposit address** — Each user has a unique subaccount per token.
+ *    The address (principal + subaccount hex) is displayed for the user to
+ *    copy and use in an external wallet.
+ * 2. **Transfer externally** — The user sends tokens to that address via any
+ *    ICRC-1-compatible wallet or exchange.
+ * 3. **Notify deposit** — The user clicks "Notify Deposit", which calls
+ *    `notifyDeposit()` on the canister. The canister checks the ICRC-1 ledger
+ *    for new incoming transfers and credits the user's in-canister balance.
+ *
+ * ## Withdrawal flow
+ * 1. The user enters an amount and a destination principal.
+ * 2. The amount is converted from human-readable format to the token's smallest
+ *    unit (e.g. e8s for ICP) via `parseFloat * 10^decimals`.
+ * 3. The `withdraw()` canister call transfers tokens out and returns the
+ *    ledger block height on success.
+ *
+ * ## Transaction history
+ * Displays the most recent 50 transactions in a table (type, token, amount, memo).
+ * Transactions are fetched from the canister and displayed newest-first.
+ *
+ * @module wallet/WalletPage
+ */
+
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../auth/useAuth";
 import { createAgent } from "../api/agent";
@@ -7,12 +37,34 @@ import {
   type TransactionRecord,
 } from "../api/wallet.did";
 
+/**
+ * Token metadata for the three supported tokens.
+ * - `decimals`: Number of decimal places (ICP/ckBTC = 8, ckUSDC = 6).
+ * - `fee`: Human-readable transfer fee displayed in the withdrawal section.
+ * - `variant`: The Candid variant value passed to canister methods.
+ */
 const TOKENS: { id: string; label: string; variant: TokenTypeVariant; decimals: number; fee: string }[] = [
   { id: "ICP", label: "ICP", variant: { ICP: null }, decimals: 8, fee: "0.0001" },
   { id: "ckBTC", label: "ckBTC", variant: { ckBTC: null }, decimals: 8, fee: "0.0000001" },
   { id: "ckUSDC", label: "ckUSDC", variant: { ckUSDC: null }, decimals: 6, fee: "0.01" },
 ];
 
+/**
+ * Format a token amount from its smallest unit (e.g. e8s) to a human-readable
+ * decimal string.
+ *
+ * The amount is zero-padded to ensure at least `decimals + 1` digits, then
+ * split into whole and fractional parts. Trailing zeros are trimmed but at
+ * least 2 decimal places are always shown.
+ *
+ * @param amount - The raw amount in the token's smallest unit (bigint).
+ * @param decimals - Number of decimal places for this token (e.g. 8 for ICP).
+ * @returns A formatted string like `"1.50"` or `"0.00012345"`.
+ *
+ * @example
+ * formatAmount(150000000n, 8) // "1.50"
+ * formatAmount(12345n, 8)     // "0.00012345"
+ */
 function formatAmount(amount: bigint, decimals: number): string {
   const str = amount.toString().padStart(decimals + 1, "0");
   const whole = str.slice(0, str.length - decimals) || "0";
@@ -22,6 +74,10 @@ function formatAmount(amount: bigint, decimals: number): string {
   return `${whole}.${trimmed}`;
 }
 
+/**
+ * Convert a Candid `TransactionType` variant to a human-readable label.
+ * @param txType - A single-key object like `{ Deposit: null }`.
+ */
 function txTypeLabel(txType: Record<string, null>): string {
   const key = Object.keys(txType)[0];
   switch (key) {
@@ -33,10 +89,26 @@ function txTypeLabel(txType: Record<string, null>): string {
   }
 }
 
+/**
+ * Extract the token name from a Candid `TokenType` variant.
+ * @param tokenType - A single-key object like `{ ICP: null }`.
+ * @returns The token name string (e.g. `"ICP"`).
+ */
 function tokenLabel(tokenType: Record<string, null>): string {
   return Object.keys(tokenType)[0];
 }
 
+/**
+ * Wallet page component.
+ *
+ * Sections:
+ * 1. **Balance cards** — One card per token showing the current balance.
+ * 2. **Deposit** — Token selector, deposit address display, and "Notify Deposit" button.
+ * 3. **Withdraw** — Token selector, amount input, destination principal input, and "Withdraw" button.
+ * 4. **Transaction history** — Scrollable table of the last 50 transactions.
+ *
+ * Requires authentication; shows a "Please log in" message otherwise.
+ */
 export default function WalletPage() {
   const { isAuthenticated, authClient } = useAuth();
   const [balances, setBalances] = useState<Record<string, bigint>>({});

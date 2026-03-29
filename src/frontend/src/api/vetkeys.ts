@@ -1,5 +1,45 @@
-/// vetKD client-side encryption/decryption for API keys
-/// Uses @dfinity/vetkeys to derive AES-256-GCM keys from ICP's threshold key system
+/**
+ * @file Client-side vetKD encryption and decryption utilities for API keys.
+ *
+ * This module implements the frontend half of the ICP **vetKD** (Verifiable
+ * Encrypted Threshold Key Derivation) protocol. vetKD allows the browser to
+ * derive a per-user AES-256-GCM key without any party (including ICP node
+ * operators) ever seeing the raw key material.
+ *
+ * ## High-level flow
+ *
+ * ```
+ * Browser                              KeyVault canister              ICP Subnet
+ * ───────                              ─────────────────              ──────────
+ * 1. Generate ephemeral transport
+ *    keypair (TransportSecretKey)
+ * 2. Send transport public key ──────► getEncryptedVetkey() ────────► vetkd_derive_key()
+ *                                                                     (threshold signing)
+ * 3. Receive encrypted vetKey ◄────── return encrypted bytes ◄──────
+ * 4. Decrypt with transport secret
+ *    + verify with verification key
+ * 5. Derive AES-256-GCM CryptoKey
+ *    from vetKey material
+ * 6. Use CryptoKey to encrypt/decrypt
+ *    API keys client-side
+ * ```
+ *
+ * ## Security properties
+ *
+ * - The **transport keypair** is ephemeral (random per session). Even if an old
+ *   encrypted vetKey blob is intercepted, it cannot be decrypted without the
+ *   transport secret that existed only in memory.
+ * - The **vetKey** is derived by the ICP subnet via threshold BLS signing.
+ *   No single node ever holds the full key. The canister controls which
+ *   principals can derive keys.
+ * - The **AES key** is derived from the vetKey material using HKDF, NOT by
+ *   using raw vetKey bytes directly (which would be insecure).
+ * - Ciphertext format is `[12-byte IV | AES-GCM ciphertext]`, a standard
+ *   construction that is authenticated (tamper-evident).
+ *
+ * @module api/vetkeys
+ */
+
 import {
   TransportSecretKey,
   DerivedPublicKey,
@@ -8,25 +48,33 @@ import {
 import { HttpAgent, Identity } from "@icp-sdk/core/agent";
 import { createKeyVaultActor } from "./keyvault.did";
 
-const IV_LENGTH = 12; // AES-GCM standard
+/** Standard AES-GCM initialization vector length in bytes. */
+const IV_LENGTH = 12;
 
 /**
- * Derive an AES-256-GCM key for the current user via vetKD.
+ * Derive an AES-256-GCM {@link CryptoKey} for the current user via vetKD.
  *
- * Flow:
- * 1. Generate ephemeral transport keypair
- * 2. Send transport public key to KeyVault canister
- * 3. Receive encrypted vetKey (only our transport secret can decrypt)
- * 4. Decrypt vetKey, derive AES key material
- * 5. Import as Web Crypto AES-GCM key
- */
-/**
- * Derive an AES-256-GCM key for the current user via vetKD.
+ * This is the main entry point for vetKD on the client side. The returned
+ * `CryptoKey` can be passed to {@link encryptWithVetKey} and
+ * {@link decryptWithVetKey} to protect API keys before on-chain storage.
  *
- * IMPORTANT: The `input` passed to `decryptAndVerify` MUST match the `input`
- * used in the canister's `vetkd_derive_key` call. Our canister uses
- * `Principal.toBlob(msg.caller)`, so we must pass the same principal bytes here.
- * See: ICP vetKD skill — "Mistakes That Break Your Build" #7 and #9
+ * ### Step-by-step
+ *
+ * 1. Extract the caller's principal bytes from the agent's identity. These
+ *    bytes **must** match the `input` the canister passes to `vetkd_derive_key`
+ *    (i.e. `Principal.toBlob(msg.caller)`). A mismatch will cause verification
+ *    to fail silently and produce a wrong key.
+ * 2. Generate a fresh {@link TransportSecretKey} (ephemeral, never leaves memory).
+ * 3. Send the transport public key to the KeyVault canister and receive the
+ *    encrypted vetKey + the verification key in parallel.
+ * 4. Decrypt and verify the vetKey using the transport secret + verification key.
+ * 5. Derive AES-256-GCM key material from the vetKey via HKDF with the domain
+ *    separator `"openclaw-api-keys-v1"`.
+ *
+ * @param agent - An authenticated {@link HttpAgent} whose identity determines
+ *   the derived key. Different principals produce different AES keys.
+ * @returns A Web Crypto {@link CryptoKey} usable for AES-256-GCM encrypt/decrypt.
+ * @throws If the agent has no identity, or if the canister returns an error.
  */
 export async function deriveAesKey(agent: HttpAgent): Promise<CryptoKey> {
   const kv = createKeyVaultActor(agent);
@@ -41,9 +89,8 @@ export async function deriveAesKey(agent: HttpAgent): Promise<CryptoKey> {
   }
 
   // 1. Generate ephemeral transport keypair (MUST be fresh per session — skill rule #2)
-  const seed = crypto.getRandomValues(new Uint8Array(32));
-  const transportSecretKey = TransportSecretKey.fromSeed(seed);
-  const transportPublicKey = transportSecretKey.publicKey();
+  const transportSecretKey = TransportSecretKey.random();
+  const transportPublicKey = transportSecretKey.publicKeyBytes();
 
   // 2-3. Request encrypted vetKey and verification key in parallel
   const [encryptedKeyResult, verificationKeyBytes] = await Promise.all([
@@ -76,21 +123,20 @@ export async function deriveAesKey(agent: HttpAgent): Promise<CryptoKey> {
 
   // 5. Derive AES-256-GCM key from vetKey material
   // (skill rule #3: do NOT use raw vetKey bytes directly as AES key)
-  const aesKeyMaterial = vetKey.toDerivedKeyMaterial();
-  const aesKey = await crypto.subtle.importKey(
-    "raw",
-    aesKeyMaterial.data.slice(0, 32), // 256-bit AES key
-    { name: "AES-GCM" },
-    false,
-    ["encrypt", "decrypt"],
-  );
-
-  return aesKey;
+  const aesKeyMaterial = await vetKey.asDerivedKeyMaterial();
+  return aesKeyMaterial.deriveAesGcmCryptoKey("openclaw-api-keys-v1");
 }
 
 /**
  * Encrypt a plaintext string with AES-256-GCM using a vetKD-derived key.
- * Returns a Uint8Array: [12-byte IV | ciphertext]
+ *
+ * The output format is `[12-byte random IV | AES-GCM ciphertext + auth tag]`.
+ * A fresh random IV is generated for every call, so encrypting the same
+ * plaintext twice produces different ciphertext (as required by GCM security).
+ *
+ * @param plaintext - The string to encrypt (e.g. an API key like `"sk-ant-..."`).
+ * @param aesKey - A {@link CryptoKey} obtained from {@link deriveAesKey}.
+ * @returns A `Uint8Array` containing the IV followed by the ciphertext.
  */
 export async function encryptWithVetKey(
   plaintext: string,
@@ -113,8 +159,17 @@ export async function encryptWithVetKey(
 }
 
 /**
- * Decrypt ciphertext with AES-256-GCM using a vetKD-derived key.
- * Expects input format: [12-byte IV | ciphertext]
+ * Decrypt ciphertext that was produced by {@link encryptWithVetKey}.
+ *
+ * Expects the input format `[12-byte IV | AES-GCM ciphertext + auth tag]`.
+ * If the ciphertext was tampered with, the Web Crypto API will throw an
+ * `OperationError` (GCM authentication failure).
+ *
+ * @param encryptedData - The `Uint8Array` previously returned by {@link encryptWithVetKey}.
+ * @param aesKey - The same {@link CryptoKey} that was used for encryption
+ *   (derived from the same principal via {@link deriveAesKey}).
+ * @returns The original plaintext string.
+ * @throws If the data is too short, the key is wrong, or the ciphertext was tampered with.
  */
 export async function decryptWithVetKey(
   encryptedData: Uint8Array,

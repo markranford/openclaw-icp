@@ -37,6 +37,17 @@
       "source": ["src/frontend/dist"],
       "dependencies": ["gateway", "keyvault", "wallet", "identity"],
       "build": []
+    },
+    "test_icp_ledger": {
+      "type": "custom",
+      "candid": "https://raw.githubusercontent.com/dfinity/ic/refs/heads/master/rs/ledger_suite/icrc1/ledger/ledger.did",
+      "wasm": "https://download.dfinity.systems/ic/69e1408347723dbaa7a6cd2faa9b65c42abbe861/canisters/ic-icrc1-ledger.wasm.gz",
+      "init_arg_file": "test_icp_ledger_init.args",
+      "remote": {
+        "id": {
+          "ic": "ryjl3-tyaaa-aaaaa-aaaba-cai"
+        }
+      }
     }
   },
   "defaults": {

@@ -1,24 +1,58 @@
+/**
+ * @file Chat input bar with auto-resizing textarea and keyboard shortcuts.
+ *
+ * Provides the message composition area at the bottom of the chat view.
+ *
+ * **Keyboard behavior:**
+ * - `Enter` sends the message (calls {@link InputBarProps.onSend}).
+ * - `Shift+Enter` inserts a newline (multi-line input).
+ *
+ * **Auto-resize:** The textarea grows vertically as the user types, up to a
+ * maximum height of 200px, then switches to internal scrolling.
+ *
+ * **Disabled state:** Both the textarea and the send button are disabled while
+ * `isLoading` is `true`, preventing duplicate submissions.
+ *
+ * @module chat/InputBar
+ */
+
 import { useState, useRef, useCallback, KeyboardEvent } from "react";
 
+/**
+ * Props for the {@link InputBar} component.
+ *
+ * @property onSend - Callback invoked with the trimmed message text when
+ *   the user presses Enter or clicks Send.
+ * @property isLoading - When `true`, the input and button are disabled.
+ */
 interface InputBarProps {
   onSend: (text: string) => void;
   isLoading: boolean;
 }
 
+/**
+ * Message composition bar with a resizable textarea and send button.
+ *
+ * The component manages its own text state internally and resets after each
+ * successful send.
+ */
 export default function InputBar({ onSend, isLoading }: InputBarProps) {
   const [text, setText] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  /** Send the current message if non-empty and not loading, then reset. */
   const handleSend = useCallback(() => {
     if (text.trim() && !isLoading) {
       onSend(text.trim());
       setText("");
+      // Reset textarea height after clearing text
       if (textareaRef.current) {
         textareaRef.current.style.height = "auto";
       }
     }
   }, [text, isLoading, onSend]);
 
+  /** Enter sends; Shift+Enter inserts a newline. */
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
       if (e.key === "Enter" && !e.shiftKey) {
@@ -29,6 +63,11 @@ export default function InputBar({ onSend, isLoading }: InputBarProps) {
     [handleSend]
   );
 
+  /**
+   * Auto-resize handler: resets height to `auto` then sets it to the
+   * scrollHeight, capped at 200px to prevent the input from dominating
+   * the viewport.
+   */
   const handleInput = useCallback(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";

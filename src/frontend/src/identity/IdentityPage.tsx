@@ -1,8 +1,44 @@
+/**
+ * @file Agent Identity page for viewing and editing the user's on-chain profile.
+ *
+ * This page implements a full CRUD flow for the agent profile stored in the
+ * Identity canister:
+ *
+ * ## Profile display (read)
+ * - Shows the display name, description, capability tags, and usage stats
+ *   (total prompts, reputation score).
+ * - The principal is shown in truncated form (`abcde...xyz`).
+ * - An "Edit" button switches to the form view.
+ *
+ * ## Profile form (create / update)
+ * - **Display Name** (required, max 100 chars) — validated by checking `trim()`.
+ * - **Description** (optional, max 500 chars) — free-text textarea.
+ * - **Capabilities** (optional) — entered as a comma-separated string, parsed
+ *   into an array of trimmed, non-empty strings before submission.
+ * - On mount, if no profile exists (`getMyProfile` returns an error), the form
+ *   is shown automatically for first-time users.
+ * - Calls `upsertProfile(displayName, description, capabilities)` to save.
+ *
+ * ## Stats
+ * - `totalPrompts` and `reputation` are read-only values managed by the
+ *   gateway canister. They increment with usage and cannot be edited.
+ *
+ * @module identity/IdentityPage
+ */
+
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../auth/useAuth";
 import { createAgent } from "../api/agent";
 import { createIdentityActor, type AgentProfile } from "../api/identity.did";
 
+/**
+ * Agent Identity page component.
+ *
+ * Renders either the profile view (with stats and an Edit button) or the
+ * profile form (for creating/updating), depending on the current state.
+ *
+ * Requires authentication; shows a "Please log in" message otherwise.
+ */
 export default function IdentityPage() {
   const { isAuthenticated, authClient, principal } = useAuth();
   const [profile, setProfile] = useState<AgentProfile | null>(null);
@@ -146,23 +182,54 @@ export default function IdentityPage() {
               </div>
             )}
 
-            {/* Stats */}
-            <div style={{ display: "flex", gap: "2rem", paddingTop: "0.75rem", borderTop: "1px solid var(--border)" }}>
-              <div>
-                <div style={{ fontSize: "1.25rem", fontWeight: 600 }}>{profile.totalPrompts.toString()}</div>
-                <div style={{ fontSize: "0.75rem", color: "var(--text-secondary)" }}>Total Prompts</div>
-              </div>
-              <div>
-                <div style={{ fontSize: "1.25rem", fontWeight: 600 }}>{profile.reputation.toString()}</div>
-                <div style={{ fontSize: "0.75rem", color: "var(--text-secondary)" }}>Reputation</div>
-              </div>
-              <div>
-                <div style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginTop: "0.25rem" }}>
-                  {principal ? `${principal.slice(0, 12)}...${principal.slice(-6)}` : "—"}
+            {/* Reputation & Stats */}
+            {(() => {
+              const rep = Number(profile.reputation);
+              const tier = rep <= 10 ? "Newcomer" : rep <= 30 ? "Active" : rep <= 70 ? "Contributor" : rep <= 120 ? "Expert" : "Legend";
+              const tierColor = rep <= 10 ? "#94a3b8" : rep <= 30 ? "#22c55e" : rep <= 70 ? "#3b82f6" : rep <= 120 ? "#a855f7" : "#f59e0b";
+              const maxRep = 162;
+              const pct = Math.min(100, Math.round((rep / maxRep) * 100));
+
+              return (
+                <div style={{ paddingTop: "0.75rem", borderTop: "1px solid var(--border)" }}>
+                  {/* Reputation bar */}
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.75rem" }}>
+                    <span style={{ fontSize: "0.8rem", color: "var(--text-secondary)", minWidth: "70px" }}>Reputation</span>
+                    <div style={{ flex: 1, height: 8, backgroundColor: "var(--bg-primary)", borderRadius: 4, overflow: "hidden" }}>
+                      <div style={{ width: `${pct}%`, height: "100%", backgroundColor: tierColor, borderRadius: 4, transition: "width 0.5s" }} />
+                    </div>
+                    <span style={{ fontSize: "0.85rem", fontWeight: 600, color: tierColor, minWidth: "80px", textAlign: "right" }}>
+                      {tier} ({rep})
+                    </span>
+                  </div>
+
+                  {/* Reputation breakdown */}
+                  <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginBottom: "1rem", lineHeight: 1.6 }}>
+                    {(() => {
+                      const prompts = Number(profile.totalPrompts);
+                      const promptPts = Math.min(Math.floor(prompts / 10), 100);
+                      const descPts = profile.description ? 5 : 0;
+                      const capPts = Math.min(profile.capabilities.length * 2, 10);
+                      return `${promptPts} from prompts (${prompts} total) · ${descPts + capPts} from profile · rest from account age`;
+                    })()}
+                  </div>
+
+                  {/* Stats row */}
+                  <div style={{ display: "flex", gap: "2rem" }}>
+                    <div>
+                      <div style={{ fontSize: "1.25rem", fontWeight: 600 }}>{profile.totalPrompts.toString()}</div>
+                      <div style={{ fontSize: "0.75rem", color: "var(--text-secondary)" }}>Total Prompts</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginTop: "0.25rem" }}>
+                        {principal ? `${principal.slice(0, 12)}...${principal.slice(-6)}` : "—"}
+                      </div>
+                      <div style={{ fontSize: "0.75rem", color: "var(--text-secondary)" }}>Principal</div>
+                    </div>
+                  </div>
                 </div>
-                <div style={{ fontSize: "0.75rem", color: "var(--text-secondary)" }}>Principal</div>
-              </div>
-            </div>
+              );
+            })()}
           </div>
         </>
       ) : (

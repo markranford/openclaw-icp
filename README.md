@@ -393,12 +393,11 @@ dfx canister call gateway setKeyVault '(principal "<keyvault-id>")' --network ic
 |-------|---------|--------|
 | 1 | Project skeleton, on-chain LLM chat, conversation CRUD | Done |
 | 2 | External LLM routing (Anthropic, OpenAI, MagickMind), vetKD encryption, Settings page | Done |
-| 3 | Wallet (ICRC-1/2 tokens, pay-per-request billing, DEX integration) | Planned |
-| 4 | Identity (ICRC-7 NFT credentials, reputation, Kinic vector memory) | Planned |
-| 5 | Email (moltmail decentralized + SendGrid traditional) | Planned |
-| 6 | DEX integration (KongSwap, ICPSwap) | Planned |
-| 7 | Ecosystem (OpenChat notifications, ELNA marketplace, CycleOps monitoring) | Planned |
-| 8 | SNS DAO governance + mainnet production launch | Planned |
+| 3 | Production hardening: stable memory, local test ledger, cycles monitoring, proper JSON parsing, vetkeys API fixes | Done |
+| 4 | Core feature polish: typing animation, conversation search/export, system prompt templates, reputation system | Done |
+| 5 | Economic layer + Communications: token billing refinement, deposit/withdrawal testing, DEX price oracle, email/SMS/messaging (ICP/Ethereum-native services) | Planned |
+| 6 | Ecosystem integration: OpenChat notifications, CycleOps monitoring, MagickMind deep integration | Planned |
+| 7 | SNS DAO governance + mainnet production launch + security audit | Planned |
 
 ---
 

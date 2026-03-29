@@ -1,9 +1,53 @@
+/**
+ * @file Settings page for managing external LLM provider API keys.
+ *
+ * This page allows authenticated users to securely store, replace, and delete
+ * API keys for external LLM providers (Anthropic, OpenAI, MagickMind). Keys
+ * are stored on-chain in the KeyVault canister.
+ *
+ * ## Security: vetKD encryption vs plaintext fallback
+ *
+ * - **Mainnet:** On page load, the component attempts to derive a per-user
+ *   AES-256-GCM key via vetKD ({@link deriveAesKey}). If successful, all keys
+ *   are encrypted client-side before being sent to the canister. Node operators
+ *   cannot read the plaintext.
+ * - **Local dev:** vetKD is typically not available on local replicas. The
+ *   component falls back to plaintext storage (safe for testing, flagged in
+ *   the UI with a security note).
+ *
+ * ## Key lifecycle
+ *
+ * 1. **Check existence:** On mount, calls `hasKey(keyId)` for each provider
+ *    to display "Configured" / "Not set" badges.
+ * 2. **Save:** Encrypts the key with vetKD (if available) or encodes as UTF-8,
+ *    then calls `storeEncryptedKey(keyId, blob)`.
+ * 3. **Delete:** Calls `deleteKey(keyId)` and updates the badge.
+ *
+ * ## Adding a new provider
+ *
+ * Add an entry to the {@link PROVIDERS} array with a unique `id`, `keyId`
+ * (used as the on-chain storage key), and display metadata. The rest of the
+ * UI is generated automatically.
+ *
+ * @module settings/SettingsPage
+ */
+
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "../auth/useAuth";
 import { createAgent, isLocal } from "../api/agent";
 import { createKeyVaultActor } from "../api/keyvault.did";
 import { deriveAesKey, encryptWithVetKey } from "../api/vetkeys";
+import MagickMindSettings from "./MagickMindSettings";
 
+/**
+ * Configuration for a single LLM provider displayed in the settings UI.
+ *
+ * @property id - Unique identifier used as the React key and state map key.
+ * @property label - Human-readable provider name shown in the card header.
+ * @property keyId - The logical key name stored on-chain (e.g. `"anthropic_api_key"`).
+ * @property placeholder - Input placeholder showing expected key format.
+ * @property helpText - Brief instruction on where to obtain the key.
+ */
 interface ProviderConfig {
   id: string;
   label: string;
@@ -12,6 +56,10 @@ interface ProviderConfig {
   helpText: string;
 }
 
+/**
+ * Registry of supported LLM providers. Each entry generates a settings card
+ * with save/delete controls. To add a new provider, append to this array.
+ */
 const PROVIDERS: ProviderConfig[] = [
   {
     id: "anthropic",
@@ -34,8 +82,47 @@ const PROVIDERS: ProviderConfig[] = [
     placeholder: "your MagickMind API key",
     helpText: "Free during beta at magickmind.ai",
   },
+  {
+    id: "resend",
+    label: "Resend (Email)",
+    keyId: "resend_api_key",
+    placeholder: "re_...",
+    helpText: "Send email from your agent. Get key at resend.com",
+  },
+  {
+    id: "twilio_sid",
+    label: "Twilio Account SID",
+    keyId: "twilio_account_sid",
+    placeholder: "AC...",
+    helpText: "For SMS. Get from twilio.com/console",
+  },
+  {
+    id: "twilio_token",
+    label: "Twilio Auth Token",
+    keyId: "twilio_auth_token",
+    placeholder: "your auth token",
+    helpText: "Found in Twilio console dashboard",
+  },
+  {
+    id: "twilio_phone",
+    label: "Twilio Phone Number",
+    keyId: "twilio_phone_number",
+    placeholder: "+1234567890",
+    helpText: "Your Twilio number in E.164 format",
+  },
 ];
 
+/**
+ * Settings page component for API key management.
+ *
+ * Displays a card for each provider in {@link PROVIDERS} with:
+ * - A status badge (Configured / Not set).
+ * - A password input for entering or replacing a key.
+ * - Save and Delete buttons with per-provider loading states.
+ * - Success/error messages.
+ *
+ * A footer banner indicates whether vetKD encryption is active.
+ */
 export default function SettingsPage() {
   const { isAuthenticated, authClient } = useAuth();
   const [keyStates, setKeyStates] = useState<Record<string, boolean>>({});
@@ -313,6 +400,23 @@ export default function SettingsPage() {
             </div>
           );
         })
+      )}
+
+      {/* MagickMind deep integration settings */}
+      {!loading && (
+        <>
+          <h2
+            style={{
+              fontSize: "1.1rem",
+              fontWeight: 600,
+              marginTop: "2rem",
+              marginBottom: "0.75rem",
+            }}
+          >
+            MagickMind Integration
+          </h2>
+          <MagickMindSettings />
+        </>
       )}
 
       <div

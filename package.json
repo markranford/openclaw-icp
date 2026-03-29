@@ -10,5 +10,8 @@
     "build": "npm --prefix src/frontend run build",
     "dev": "npm --prefix src/frontend run dev",
     "test": "npm --prefix src/frontend run test"
+  },
+  "dependencies": {
+    "@rollup/rollup-linux-x64-gnu": "^4.60.0"
   }
 }
